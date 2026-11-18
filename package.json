@@ -1,0 +1,22 @@
+{
+  "name": "synccord-monorepo",
+  "version": "1.0.0",
+  "description": "SyncCord - Production-Ready High Performance Chat & Voice Platform (SyncCord.cloud)",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix clone-project start",
+    "start:dev": "npm --prefix clone-project run start:dev",
+    "desktop": "npm --prefix clone-project run desktop",
+    "build": "npm --prefix clone-project run build",
+    "lint": "npm --prefix clone-project run lint",
+    "lint:fix": "npm --prefix clone-project run lint:fix",
+    "typecheck": "npm --prefix clone-project run typecheck",
+    "test": "npm --prefix clone-project test",
+    "test:unit": "npm --prefix clone-project run test:unit",
+    "test:integration": "npm --prefix clone-project run test:integration",
+    "test:cov": "npm --prefix clone-project run test:cov",
+    "verify:rules": "npm --prefix clone-project run verify:rules",
+    "docker:up": "docker-compose -f clone-project/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f clone-project/docker-compose.yml down"
+  }
+}

@@ -1,0 +1,37 @@
+# Default ignored files
+/shelf/
+/.idea/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Ignored default folder with query files
+/queries/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+# Dependências do Node
+node_modules/
+clone-project/node_modules/
+
+# Pastas de Build/Compilação
+dist/
+clone-project/dist/
+clone-project/desktop/target/
+
+# Configurações da IDE (WebStorm/IntelliJ)
+.idea/
+
+# Variáveis de Ambiente (Segurança)
+.env
+clone-project/.env
+
+# Arquivos de Log e Saída de texto
+err.txt
+out.txt
+clone-project/err.txt
+clone-project/out.txt
+*.log
+
+# Arquivos do SO
+.DS_Store
+Thumbs.db
+HISTORICO_CONVERSA.md

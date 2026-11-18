@@ -1,0 +1,107 @@
+# Discord app.asar — Notas de Extração
+# Gerado para fins educacionais (análise do próprio app instalado)
+# Data de referência: 2026-11
+
+===========================================================
+CAMINHO DO ASAR:
+  C:\Users\marcos.correa\AppData\Local\Discord\app-1.0.9267\resources\app.asar
+===========================================================
+
+## COMO EXTRAIR (READ-ONLY — NÃO MODIFICAR O APP)
+
+```bash
+# Instalar a CLI do asar globalmente
+npm install -g @electron/asar
+
+# Listar conteúdo sem extrair
+asar list "C:\Users\marcos.correa\AppData\Local\Discord\app-1.0.9267\resources\app.asar"
+
+# Extrair para um diretório de análise (não modifica o original)
+mkdir C:\discord-analysis
+asar extract "C:\Users\marcos.correa\AppData\Local\Discord\app-1.0.9267\resources\app.asar" C:\discord-analysis\extracted
+```
+
+---
+
+## ESTRUTURA OBSERVADA DO ASAR (típica do Discord)
+
+```
+app.asar/
+├── package.json              ← Entry point e metadata do app Electron
+├── index.js                  ← Main process do Electron (ponto de entrada)
+├── app_bootstrap/            ← Bootstrap do processo principal
+│   ├── autoUpdater.js
+│   ├── autoStart.js
+│   ├── buildInfo.js
+│   ├── crashReporter.js
+│   ├── ipc.js                ← IPC handlers (main ↔ renderer)
+│   └── splashScreen.js
+├── common/                   ← Código compartilhado main/renderer
+│   ├── constants.js
+│   └── utils.js
+├── discord_desktop_core/     ← Core do app desktop
+│   └── index.js
+├── discord_voice/            ← Módulo de voz nativo (pode ser um .node)
+├── discord_spellcheck/       ← Correção ortográfica nativa
+├── discord_utils/            ← Utilitários (C++ addon compilado)
+├── discord_rpc/              ← Rich Presence via IPC local
+├── modules/
+│   ├── discord_desktop_core-X/
+│   ├── discord_voice-X/
+│   └── discord_utils-X/
+└── resources/
+    ├── discord.ico
+    ├── discord_tray.ico
+    └── ...
+```
+
+---
+
+## OBSERVAÇÕES TÉCNICAS
+
+### Main Process (Node.js)
+- O processo principal (`index.js`) é responsável por:
+  - Criar a janela do Electron (`BrowserWindow`)
+  - Configurar auto-updater
+  - Gerenciar o ciclo de vida do app
+  - Configurar IPC entre processos
+  - Injetar o User-Agent customizado
+
+### Renderer Process (Chromium)
+- O conteúdo visual (React/CSS) NÃO está no asar principal
+- O app carrega o frontend via URL: `https://discord.com/app`
+- O app.asar é apenas o "wrapper" Electron — a UI é uma WebApp normal
+
+### Módulos Nativos (.node)
+- `discord_voice`: Módulo C++ para captura de áudio/voz
+- `discord_utils`: Acesso a APIs nativas do SO
+- `discord_spellcheck`: Integração com spell check do SO
+- Esses módulos são compilados para cada plataforma
+
+### IPC Channels observados (via análise de código)
+- `DISCORD_RELAUNCH`         — reiniciar o app
+- `DISCORD_SCREENSHOT`       — captura de tela
+- `WINDOW_MINIMIZE/MAXIMIZE` — controle da janela
+- `PUSH_TO_TALK_*`          — teclas de push-to-talk
+- `OVERLAY_*`               — overlay de jogo
+- `RPC_*`                   — Rich Presence local
+
+---
+
+## CONCLUSÃO PARA O CLONE
+
+O app Discord Desktop é fundamentalmente um **browser Electron** carregando
+uma WebApp hosteada nos servidores do Discord. Para o nosso clone:
+
+1. O "app desktop" é Electron wrapping nossa WebApp (NestJS serve as views)
+2. Os módulos nativos de voz precisam ser reimplementados (via mediasoup-client)
+3. O IPC pode ser simplificado (window controls básicos)
+4. Rich Presence pode ser adicionado na fase 4+
+
+---
+
+## RECURSOS PARA ANÁLISE ADICIONAL
+
+- Documentação @electron/asar: https://github.com/electron/asar
+- Electron IPC docs: https://www.electronjs.org/docs/latest/tutorial/ipc
+- BetterDiscord source (referência de módulos): https://github.com/BetterDiscord/BetterDiscord

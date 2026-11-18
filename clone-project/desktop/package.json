@@ -1,0 +1,12 @@
+{
+  "name": "synccord-desktop",
+  "version": "1.0.0",
+  "description": "SyncCord Desktop Native Rust Client (Wry / Tao)",
+  "author": "Marcos Correa",
+  "license": "MIT",
+  "scripts": {
+    "start": "cargo run",
+    "build": "cargo build --release",
+    "dist": "cargo build --release"
+  }
+}
