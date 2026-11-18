@@ -1,13 +1,13 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
-import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
-
-dotenv.config();
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');

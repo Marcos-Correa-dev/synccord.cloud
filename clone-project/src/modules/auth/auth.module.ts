@@ -16,9 +16,11 @@ import { JwtAuthGuard } from './infrastructure/adapters/out/jwt-auth.guard';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'super_secret_discord_jwt_key_change_in_production_2026',
-      signOptions: { expiresIn: '15m' },
+    JwtModule.registerAsync({
+      useFactory: () => ({
+        secret: process.env.JWT_SECRET || 'synccord_jwt_secret_key_cloud_2026_secure',
+        signOptions: { expiresIn: '15m' },
+      }),
     }),
   ],
   controllers: [AuthController],
