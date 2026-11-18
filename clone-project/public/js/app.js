@@ -302,6 +302,26 @@
   const activeStreams = new Map();
   // WebRTC Peer Connections: userId -> RTCPeerConnection
   const peerConnections = new Map();
+  // Remote audio elements for direct audio output: userId -> HTMLAudioElement
+  const remoteAudioElements = new Map();
+  // Queued ICE candidates awaiting remote description: userId -> RTCIceCandidate[]
+  const iceCandidateQueues = new Map();
+  // Renegotiation / offer locking per peer to prevent collisions
+  const isMakingOffer = new Map();
+
+  // Redundant public STUN servers for WebRTC NAT Traversal
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+    ],
+    iceCandidatePoolSize: 10,
+  };
 
   // SyncCord Official Vector SVGs
   const SVGS = {
@@ -436,9 +456,11 @@
   }
 
   // Check URL parameters for invites
+  let pendingInviteChannelId = null;
   function checkUrlInvites() {
     const params = new URLSearchParams(window.location.search);
     const inviteGuild = params.get('guild') || params.get('joinGuild') || params.get('invite');
+    pendingInviteChannelId = params.get('channel');
     if (inviteGuild && token && currentUser && /^\d+$/.test(inviteGuild)) {
       api(`/guilds/${inviteGuild}/members`, { method: 'POST' })
         .then(() => loadGuilds())
@@ -507,6 +529,9 @@
         voiceStates = packet.d || [];
         renderVoiceUsers();
         renderVoiceCallStage();
+        if (connectedVoiceChannel) {
+          syncVoiceConnections();
+        }
       } else if (packet.op === 0 && packet.t === 'VOICE_STATE_UPDATE') {
         handleVoiceStateUpdate(packet.d);
       } else if (packet.op === 0 && packet.t === 'VOICE_SPEAKING') {
@@ -562,6 +587,7 @@
     if (!state.channelId) {
       voiceStates = voiceStates.filter((s) => s.user.id !== state.userId);
       activeStreams.delete(state.userId);
+      closePeerConnection(state.userId);
       renderVideoGrid();
       if (currentUser && state.userId === currentUser.id && connectedVoiceChannel) {
         handleVoiceDisconnectedUI();
@@ -572,6 +598,18 @@
         voiceStates[idx] = { ...voiceStates[idx], ...state };
       } else {
         voiceStates.push(state);
+      }
+
+      // When another user is in or joins our voice channel, establish WebRTC peer connection
+      if (
+        connectedVoiceChannel &&
+        state.channelId === connectedVoiceChannel.id &&
+        state.user &&
+        currentUser &&
+        state.user.id !== currentUser.id
+      ) {
+        const isInitiator = currentUser.id > state.user.id;
+        connectToVoicePeer(state.user.id, isInitiator);
       }
     }
     renderVoiceUsers();
@@ -587,14 +625,14 @@
     }
 
     if (data.streaming) {
-      if (!activeStreams.has(data.userId)) {
-        activeStreams.set(data.userId, {
-          stream: data.userId === currentUser?.id ? screenStream : null,
-          username: data.username || state?.user.username || 'Membro',
-          isLocal: data.userId === currentUser?.id,
-          type: 'screen',
-        });
-      }
+      const existing = activeStreams.get(data.userId);
+      const isMe = currentUser && data.userId === currentUser.id;
+      activeStreams.set(data.userId, {
+        stream: isMe ? screenStream : (existing?.stream || null),
+        username: data.username || state?.user.username || 'Membro',
+        isLocal: isMe,
+        type: 'screen',
+      });
     } else {
       activeStreams.delete(data.userId);
     }
@@ -1537,6 +1575,19 @@
 
     renderVoiceUsers();
 
+    if (pendingInviteChannelId) {
+      const targetCh = safeChannels.find((c) => c.id === pendingInviteChannelId);
+      if (targetCh) {
+        pendingInviteChannelId = null;
+        if (targetCh.type === 2) {
+          joinVoiceChannel(targetCh);
+        } else {
+          selectChannel(targetCh);
+        }
+        return;
+      }
+    }
+
     if (textChannels.length > 0 && (!currentChannel || currentChannel.guildId !== currentGuild.id)) {
       selectChannel(textChannels[0]);
     }
@@ -1658,49 +1709,68 @@
       voiceVideoGridEl.style.gridTemplateColumns = 'repeat(auto-fit, minmax(360px, 1fr))';
     }
 
-    voiceVideoGridEl.innerHTML = '';
+    // Remove obsolete cards that are no longer in activeStreams
+    const currentCardElements = Array.from(voiceVideoGridEl.children);
+    currentCardElements.forEach((cardEl) => {
+      const uId = cardEl.id.replace('video-grid-item-', '');
+      if (!activeStreams.has(uId)) {
+        cardEl.remove();
+      }
+    });
 
     activeStreams.forEach((item, userId) => {
-      const card = document.createElement('div');
-      card.className = 'video-grid-item';
-      card.id = `video-grid-item-${userId}`;
+      let card = document.getElementById(`video-grid-item-${userId}`);
+      let videoEl = document.getElementById(`stream-player-${userId}`);
 
-      const videoEl = document.createElement('video');
-      videoEl.className = 'voice-video-element';
-      videoEl.id = `stream-player-${userId}`;
-      videoEl.autoplay = true;
-      videoEl.playsInline = true;
-      if (item.isLocal) videoEl.muted = true;
+      if (!card) {
+        card = document.createElement('div');
+        card.className = 'video-grid-item';
+        card.id = `video-grid-item-${userId}`;
 
-      if (item.stream) {
-        videoEl.srcObject = item.stream;
-        videoEl.play().catch(() => {});
-      }
+        videoEl = document.createElement('video');
+        videoEl.className = 'voice-video-element';
+        videoEl.id = `stream-player-${userId}`;
+        videoEl.autoplay = true;
+        videoEl.playsInline = true;
+        // Local screen is muted to avoid loopback
+        videoEl.muted = true;
 
-      const bar = document.createElement('div');
-      bar.className = 'stream-floating-bar';
-      bar.innerHTML = `
-        <span class="live-badge">AO VIVO</span>
-        <span style="font-weight: 600;">Tela de ${escapeHtml(item.username)}</span>
-        ${item.isLocal ? '<button class="stage-action-btn stop-stream-btn" style="margin-left: auto;">Parar Transmissão</button>' : ''}
-        <button class="stage-action-btn fullscreen-stream-btn" title="Tela Cheia" style="${item.isLocal ? '' : 'margin-left: auto;'}">⛶</button>
-      `;
+        const bar = document.createElement('div');
+        bar.className = 'stream-floating-bar';
+        bar.innerHTML = `
+          <span class="live-badge">AO VIVO</span>
+          <span class="stream-title-label" style="font-weight: 600;">Tela de ${escapeHtml(item.username)}</span>
+          ${item.isLocal ? '<button class="stage-action-btn stop-stream-btn" style="margin-left: auto;">Parar Transmissão</button>' : ''}
+          <button class="stage-action-btn fullscreen-stream-btn" title="Tela Cheia" style="${item.isLocal ? '' : 'margin-left: auto;'}">⛶</button>
+        `;
 
-      if (item.isLocal) {
-        bar.querySelector('.stop-stream-btn').onclick = (e) => {
+        if (item.isLocal) {
+          bar.querySelector('.stop-stream-btn').onclick = (e) => {
+            e.stopPropagation();
+            if (item.type === 'camera') stopCamera();
+            else stopScreenShare();
+          };
+        }
+
+        bar.querySelector('.fullscreen-stream-btn').onclick = (e) => {
           e.stopPropagation();
-          stopScreenShare();
+          if (videoEl.requestFullscreen) videoEl.requestFullscreen();
         };
+
+        card.appendChild(videoEl);
+        card.appendChild(bar);
+        voiceVideoGridEl.appendChild(card);
+      } else {
+        const titleEl = card.querySelector('.stream-title-label');
+        if (titleEl) titleEl.textContent = `Tela de ${item.username}`;
       }
 
-      bar.querySelector('.fullscreen-stream-btn').onclick = (e) => {
-        e.stopPropagation();
-        if (videoEl.requestFullscreen) videoEl.requestFullscreen();
-      };
-
-      card.appendChild(videoEl);
-      card.appendChild(bar);
-      voiceVideoGridEl.appendChild(card);
+      if (videoEl && item.stream && videoEl.srcObject !== item.stream) {
+        videoEl.srcObject = item.stream;
+        videoEl.play().catch((err) => {
+          console.warn('Video playback autoplay warning:', err);
+        });
+      }
     });
   }
 
@@ -1756,7 +1826,8 @@
     }
 
     selectChannel(channel);
-    startAudioCapture(channel.id);
+    await startAudioCapture(channel.id);
+    syncVoiceConnections();
   }
 
   // Leave Voice Channel
@@ -1777,6 +1848,7 @@
       });
     }
 
+    closeAllPeerConnections();
     handleVoiceDisconnectedUI();
     stopAudioCapture();
   }
@@ -2007,7 +2079,7 @@
           video: !!cameraStream,
         });
 
-        // Broadcast WebRTC offers to all participants in this voice call
+        // Broadcast WebRTC screen video tracks to all peers in this call
         broadcastScreenStreamToPeers();
       }
 
@@ -2016,14 +2088,38 @@
 
       renderVoiceUsers();
       renderVoiceCallStage();
-    } catch {
+    } catch (err) {
+      console.warn('Error starting screen share:', err);
       stopScreenShare();
     }
   }
 
   function stopScreenShare() {
     if (screenStream) {
-      screenStream.getTracks().forEach((track) => track.stop());
+      const screenTracks = screenStream.getTracks();
+      screenTracks.forEach((track) => track.stop());
+
+      // Cleanly remove video senders from each peer connection & renegotiate
+      peerConnections.forEach(async (pc, targetUserId) => {
+        try {
+          const senders = pc.getSenders();
+          let removed = false;
+          senders.forEach((sender) => {
+            if (sender.track && screenTracks.some((st) => st.id === sender.track.id)) {
+              try {
+                pc.removeTrack(sender);
+                removed = true;
+              } catch (e) {}
+            }
+          });
+          if (removed) {
+            renegotiateWithPeer(targetUserId, pc);
+          }
+        } catch (err) {
+          console.warn('Error cleaning screen sender:', err);
+        }
+      });
+
       screenStream = null;
     }
 
@@ -2050,100 +2146,16 @@
     }
   }
 
-  // WebRTC Mesh Signaling for Multi-user Audio & Multi-Screenshare
-  function createPeerConnection(targetUserId) {
-    if (peerConnections.has(targetUserId)) {
-      return peerConnections.get(targetUserId);
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket && currentUser) {
-        socket.emit('voice:signal', {
-          to: targetUserId,
-          from: currentUser.id,
-          signal: { candidate: event.candidate },
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      const remoteUser = voiceStates.find((s) => s.user.id === targetUserId)?.user;
-      const username = remoteUser ? remoteUser.username : 'Membro';
-
-      activeStreams.set(targetUserId, {
-        stream: remoteStream,
-        username,
-        isLocal: false,
-        type: 'screen',
-      });
-      renderVideoGrid();
-    };
-
-    if (screenStream) {
-      screenStream.getTracks().forEach((t) => pc.addTrack(t, screenStream));
-    }
-    if (localAudioStream) {
-      localAudioStream.getTracks().forEach((t) => pc.addTrack(t, localAudioStream));
-    }
-
-    peerConnections.set(targetUserId, pc);
-    return pc;
-  }
-
   async function broadcastScreenStreamToPeers() {
     if (!screenStream || !connectedVoiceChannel) return;
 
+    // Ensure all peers in voice channel have connection and senders
     const participants = voiceStates.filter((s) => s.channelId === connectedVoiceChannel.id);
     for (const p of participants) {
       if (p.user.id === currentUser?.id) continue;
-      try {
-        const pc = createPeerConnection(p.user.id);
-        screenStream.getTracks().forEach((track) => pc.addTrack(track, screenStream));
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        if (socket && currentUser) {
-          socket.emit('voice:signal', {
-            to: p.user.id,
-            from: currentUser.id,
-            signal: { sdp: pc.localDescription },
-          });
-        }
-      } catch (err) {
-        console.warn('Error broadcasting screen to peer:', err);
-      }
-    }
-  }
-
-  async function handleRemoteVoiceSignal(data) {
-    if (!currentUser || (data.to && data.to !== currentUser.id) || data.from === currentUser.id) return;
-
-    const fromUserId = data.from;
-    const pc = createPeerConnection(fromUserId);
-
-    if (data.signal?.sdp) {
-      await pc.setRemoteDescription(new RTCSessionDescription(data.signal.sdp));
-      if (data.signal.sdp.type === 'offer') {
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        if (socket && currentUser) {
-          socket.emit('voice:signal', {
-            to: fromUserId,
-            from: currentUser.id,
-            signal: { sdp: pc.localDescription },
-          });
-        }
-      }
-    } else if (data.signal?.candidate) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
-      } catch (err) {
-        console.warn('Error adding ICE candidate:', err);
-      }
+      const pc = getOrCreatePeerConnection(p.user.id);
+      syncLocalTracksWithPeer(pc);
+      renegotiateWithPeer(p.user.id, pc);
     }
   }
 
@@ -2190,6 +2202,8 @@
           streaming: !!screenStream,
           video: true,
         });
+
+        broadcastCameraStreamToPeers();
       }
 
       const myState = voiceStates.find((s) => s.user.id === currentUser.id);
@@ -2197,14 +2211,37 @@
 
       renderVoiceUsers();
       renderVoiceCallStage();
-    } catch {
+    } catch (err) {
+      console.warn('Error starting camera:', err);
       stopCamera();
     }
   }
 
   function stopCamera() {
     if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
+      const camTracks = cameraStream.getTracks();
+      camTracks.forEach((track) => track.stop());
+
+      peerConnections.forEach(async (pc, targetUserId) => {
+        try {
+          const senders = pc.getSenders();
+          let removed = false;
+          senders.forEach((sender) => {
+            if (sender.track && camTracks.some((ct) => ct.id === sender.track.id)) {
+              try {
+                pc.removeTrack(sender);
+                removed = true;
+              } catch (e) {}
+            }
+          });
+          if (removed) {
+            renegotiateWithPeer(targetUserId, pc);
+          }
+        } catch (err) {
+          console.warn('Error cleaning camera sender:', err);
+        }
+      });
+
       cameraStream = null;
     }
 
@@ -2231,6 +2268,314 @@
     }
   }
 
+  async function broadcastCameraStreamToPeers() {
+    if (!cameraStream || !connectedVoiceChannel) return;
+
+    const participants = voiceStates.filter((s) => s.channelId === connectedVoiceChannel.id);
+    for (const p of participants) {
+      if (p.user.id === currentUser?.id) continue;
+      const pc = getOrCreatePeerConnection(p.user.id);
+      syncLocalTracksWithPeer(pc);
+      renegotiateWithPeer(p.user.id, pc);
+    }
+  }
+
+  // Sync local tracks (mic, screen, cam) to RTCPeerConnection avoiding duplicates
+  function syncLocalTracksWithPeer(pc) {
+    const senders = pc.getSenders();
+
+    // 1. Microphone Audio Track
+    if (localAudioStream) {
+      const audioTrack = localAudioStream.getAudioTracks()[0];
+      if (audioTrack) {
+        const hasAudioSender = senders.some((s) => s.track && s.track.kind === 'audio');
+        if (!hasAudioSender) {
+          try {
+            pc.addTrack(audioTrack, localAudioStream);
+          } catch (e) {
+            console.warn('Error adding audio track to peer connection:', e);
+          }
+        }
+      }
+    }
+
+    // 2. Screen Share Video Track
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => {
+        const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
+        if (!alreadyAdded) {
+          try {
+            pc.addTrack(track, screenStream);
+          } catch (e) {
+            console.warn('Error adding screen track to peer connection:', e);
+          }
+        }
+      });
+    }
+
+    // 3. Camera Video Track
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => {
+        const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
+        if (!alreadyAdded) {
+          try {
+            pc.addTrack(track, cameraStream);
+          } catch (e) {
+            console.warn('Error adding camera track to peer connection:', e);
+          }
+        }
+      });
+    }
+  }
+
+  // Play remote audio through dedicated HTMLAudioElement
+  function playRemoteAudio(userId, stream) {
+    let audioEl = remoteAudioElements.get(userId);
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.id = `remote-audio-${userId}`;
+      audioEl.autoplay = true;
+      audioEl.playsInline = true;
+      audioEl.style.display = 'none';
+      document.body.appendChild(audioEl);
+      remoteAudioElements.set(userId, audioEl);
+    }
+    audioEl.srcObject = stream;
+    audioEl.muted = isDeafened;
+
+    if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof audioEl.setSinkId === 'function') {
+      audioEl.setSinkId(selectedAudioOutputId).catch(() => {});
+    }
+
+    const playPromise = audioEl.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn(`Autoplay audio for user ${userId} waiting for interaction:`, err);
+        const retryAudioPlay = () => {
+          audioEl.play().catch(() => {});
+          document.removeEventListener('click', retryAudioPlay);
+        };
+        document.addEventListener('click', retryAudioPlay, { once: true });
+      });
+    }
+  }
+
+  // WebRTC Mesh Peer Connection Factory
+  function getOrCreatePeerConnection(targetUserId) {
+    if (peerConnections.has(targetUserId)) {
+      return peerConnections.get(targetUserId);
+    }
+
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket && currentUser) {
+        socket.emit('voice:signal', {
+          to: targetUserId,
+          from: currentUser.id,
+          signal: { candidate: event.candidate },
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const track = event.track;
+      const remoteStream = event.streams[0] || new MediaStream([track]);
+
+      if (track.kind === 'audio') {
+        // High fidelity incoming voice audio playback
+        playRemoteAudio(targetUserId, remoteStream);
+      } else if (track.kind === 'video') {
+        // Incoming screenshare or camera stream
+        const remoteUser = voiceStates.find((s) => s.user.id === targetUserId)?.user;
+        const username = remoteUser ? remoteUser.username : 'Membro';
+
+        activeStreams.set(targetUserId, {
+          stream: remoteStream,
+          username,
+          isLocal: false,
+          type: 'screen',
+        });
+        renderVideoGrid();
+
+        track.onended = () => {
+          activeStreams.delete(targetUserId);
+          renderVideoGrid();
+        };
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Connection with ${targetUserId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed') {
+        pc.restartIce();
+      }
+    };
+
+    // Attach currently active tracks
+    syncLocalTracksWithPeer(pc);
+
+    peerConnections.set(targetUserId, pc);
+    return pc;
+  }
+
+  // Renegotiate with a peer safely
+  async function renegotiateWithPeer(targetUserId, pc) {
+    if (isMakingOffer.get(targetUserId)) return;
+    try {
+      isMakingOffer.set(targetUserId, true);
+      const offer = await pc.createOffer();
+      if (pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      if (socket && currentUser) {
+        socket.emit('voice:signal', {
+          to: targetUserId,
+          from: currentUser.id,
+          signal: { sdp: pc.localDescription },
+        });
+      }
+    } catch (err) {
+      console.warn(`Error creating WebRTC offer for ${targetUserId}:`, err);
+    } finally {
+      isMakingOffer.set(targetUserId, false);
+    }
+  }
+
+  // Connect to a voice peer
+  async function connectToVoicePeer(targetUserId, shouldCreateOffer = false) {
+    if (!currentUser || targetUserId === currentUser.id) return;
+    const pc = getOrCreatePeerConnection(targetUserId);
+    syncLocalTracksWithPeer(pc);
+
+    if (shouldCreateOffer) {
+      renegotiateWithPeer(targetUserId, pc);
+    }
+  }
+
+  // Connect to all peers currently in the connected voice channel
+  function syncVoiceConnections() {
+    if (!connectedVoiceChannel || !currentUser) return;
+    const participants = voiceStates.filter(
+      (s) => s.channelId === connectedVoiceChannel.id && s.user && s.user.id !== currentUser.id,
+    );
+
+    participants.forEach((p) => {
+      // Deterministic initiator: member with greater string ID sends initial offer
+      const isInitiator = currentUser.id > p.user.id;
+      connectToVoicePeer(p.user.id, isInitiator);
+    });
+  }
+
+  // Attach local audio to all active peers once microphone is captured
+  function attachAudioToAllPeers() {
+    if (!localAudioStream) return;
+    peerConnections.forEach((pc, targetUserId) => {
+      syncLocalTracksWithPeer(pc);
+      renegotiateWithPeer(targetUserId, pc);
+    });
+  }
+
+  // Process WebRTC Signaling Messages (SDP offers/answers and ICE candidates)
+  async function handleRemoteVoiceSignal(data) {
+    if (!currentUser || (data.to && data.to !== currentUser.id) || data.from === currentUser.id) return;
+
+    const fromUserId = data.from;
+    const pc = getOrCreatePeerConnection(fromUserId);
+
+    if (data.signal?.sdp) {
+      try {
+        const sdp = new RTCSessionDescription(data.signal.sdp);
+        await pc.setRemoteDescription(sdp);
+
+        // Apply any ICE candidates that arrived before remoteDescription was set
+        const queue = iceCandidateQueues.get(fromUserId) || [];
+        while (queue.length > 0) {
+          const candidate = queue.shift();
+          try {
+            await pc.addIceCandidate(candidate);
+          } catch (err) {
+            console.warn('Error applying queued ICE candidate:', err);
+          }
+        }
+
+        if (sdp.type === 'offer') {
+          syncLocalTracksWithPeer(pc);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          if (socket && currentUser) {
+            socket.emit('voice:signal', {
+              to: fromUserId,
+              from: currentUser.id,
+              signal: { sdp: pc.localDescription },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`Error handling SDP signal from ${fromUserId}:`, err);
+      }
+    } else if (data.signal?.candidate) {
+      try {
+        const candidate = new RTCIceCandidate(data.signal.candidate);
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          await pc.addIceCandidate(candidate);
+        } else {
+          if (!iceCandidateQueues.has(fromUserId)) {
+            iceCandidateQueues.set(fromUserId, []);
+          }
+          iceCandidateQueues.get(fromUserId).push(candidate);
+        }
+      } catch (err) {
+        console.warn('Error adding ICE candidate:', err);
+      }
+    }
+  }
+
+  // Close peer connection cleanly
+  function closePeerConnection(userId) {
+    const pc = peerConnections.get(userId);
+    if (pc) {
+      try {
+        pc.close();
+      } catch (e) {}
+      peerConnections.delete(userId);
+    }
+
+    const audioEl = remoteAudioElements.get(userId);
+    if (audioEl) {
+      try {
+        audioEl.pause();
+        audioEl.srcObject = null;
+        audioEl.remove();
+      } catch (e) {}
+      remoteAudioElements.delete(userId);
+    }
+
+    iceCandidateQueues.delete(userId);
+    isMakingOffer.delete(userId);
+  }
+
+  // Close all peer connections and remote audio elements on voice channel disconnect
+  function closeAllPeerConnections() {
+    peerConnections.forEach((pc) => {
+      try {
+        pc.close();
+      } catch (e) {}
+    });
+    peerConnections.clear();
+
+    remoteAudioElements.forEach((audioEl) => {
+      try {
+        audioEl.pause();
+        audioEl.srcObject = null;
+        audioEl.remove();
+      } catch (e) {}
+    });
+    remoteAudioElements.clear();
+
+    iceCandidateQueues.clear();
+    isMakingOffer.clear();
+  }
+
   // Audio Capture with Device Selection & Volume VU Meter
   async function startAudioCapture(channelId) {
     try {
@@ -2241,6 +2586,7 @@
 
         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
         refreshAudioDevices();
+        attachAudioToAllPeers();
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
@@ -2436,8 +2782,24 @@
 
     if (!modal || !input) return;
 
-    if (title) title.textContent = `Convidar amigos para ${currentGuild?.name || 'Servidor'}`;
-    input.value = `${window.location.origin}/?guild=${currentGuild?.id || ''}&channel=${channel.id}`;
+    const targetChannel = channel || connectedVoiceChannel || currentChannel;
+    const channelId = targetChannel?.id || '';
+    const guildId = currentGuild?.id || '';
+
+    if (title) {
+      if (targetChannel && targetChannel.name) {
+        title.textContent = `Convidar amigos para #${targetChannel.name}`;
+      } else {
+        title.textContent = `Convidar amigos para ${currentGuild?.name || 'Servidor'}`;
+      }
+    }
+
+    const queryParts = [];
+    if (guildId) queryParts.push(`guild=${encodeURIComponent(guildId)}`);
+    if (channelId) queryParts.push(`channel=${encodeURIComponent(channelId)}`);
+    const qs = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+
+    input.value = `${window.location.origin}/${qs}`;
 
     if (copyBtn) {
       copyBtn.textContent = 'Copiar';
@@ -2446,6 +2808,9 @@
 
     modal.classList.add('open');
   }
+
+  // Expose for inline onclick handlers
+  window.openInviteModal = openInviteModal;
 
   function updateAudioButtons() {
     if (btnToggleMicEl) {
@@ -2490,6 +2855,10 @@
   function toggleDeaf() {
     isDeafened = !isDeafened;
     updateAudioButtons();
+    // Update all remote audio playback elements immediately
+    remoteAudioElements.forEach((audioEl) => {
+      audioEl.muted = isDeafened;
+    });
     if (connectedVoiceChannel && socket && currentUser) {
       socket.emit('voice:join', {
         guildId: currentGuild.id,
@@ -2636,6 +3005,13 @@
     if (headerBtnToggleVoiceChatEl) {
       headerBtnToggleVoiceChatEl.addEventListener('click', () => {
         toggleVoiceChannelChat(connectedVoiceChannel || activeVoiceChatChannel || currentChannel);
+      });
+    }
+
+    const headerBtnInviteMembersEl = document.getElementById('header-btn-invite-members');
+    if (headerBtnInviteMembersEl) {
+      headerBtnInviteMembersEl.addEventListener('click', () => {
+        openInviteModal(connectedVoiceChannel || currentChannel);
       });
     }
 
