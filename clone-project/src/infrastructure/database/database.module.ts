@@ -51,6 +51,59 @@ export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     try {
       await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(32) PRIMARY KEY,
+          username VARCHAR(32) NOT NULL,
+          discriminator VARCHAR(4) NOT NULL DEFAULT '0001',
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          avatar TEXT,
+          bot BOOLEAN NOT NULL DEFAULT FALSE,
+          verified BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS guilds (
+          id VARCHAR(32) PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          owner_id VARCHAR(32) NOT NULL REFERENCES users(id),
+          icon TEXT,
+          description TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS guild_members (
+          guild_id VARCHAR(32) NOT NULL REFERENCES guilds(id),
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id),
+          nickname VARCHAR(64),
+          roles TEXT NOT NULL DEFAULT '[]',
+          joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (guild_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS channels (
+          id VARCHAR(32) PRIMARY KEY,
+          guild_id VARCHAR(32) REFERENCES guilds(id),
+          name VARCHAR(100) NOT NULL,
+          type INTEGER NOT NULL DEFAULT 0,
+          topic TEXT,
+          position INTEGER NOT NULL DEFAULT 0,
+          parent_id VARCHAR(32),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+          id VARCHAR(32) PRIMARY KEY,
+          channel_id VARCHAR(32) NOT NULL REFERENCES channels(id),
+          author_id VARCHAR(32) NOT NULL REFERENCES users(id),
+          content TEXT NOT NULL,
+          pinned BOOLEAN NOT NULL DEFAULT FALSE,
+          edited_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
         CREATE TABLE IF NOT EXISTS roles (
           id VARCHAR(32) PRIMARY KEY,
           guild_id VARCHAR(32) NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,

@@ -12,17 +12,11 @@ sudo apt-get install -y docker.io docker-compose-v2 git curl nginx certbot pytho
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" || true
 
-# 2. Node.js 20 & PM2
-if ! command -v node &> /dev/null; then
-    echo "📦 Instalando Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-fi
-
-if ! command -v pm2 &> /dev/null; then
-    echo "📦 Instalando PM2..."
-    sudo npm install -g pm2
-fi
+# 2. Node.js 22 LTS & PM2
+echo "📦 Configurando Node.js 22 LTS..."
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pm2
 
 # 3. Baixar ou atualizar o repositório
 cd "$HOME"
@@ -33,7 +27,8 @@ if [ ! -d "synccord.cloud" ]; then
 else
     echo "🔄 Atualizando repositório..."
     cd synccord.cloud
-    git pull origin main
+    git fetch origin
+    git reset --hard origin/main
 fi
 
 cd clone-project
@@ -67,13 +62,20 @@ sleep 4
 echo "🔨 Instalando dependências e compilando backend..."
 npm install
 npm run build
-echo "🌱 Rodando seed do banco de dados..."
-npm run db:seed || true
 
-# 7. Iniciar com PM2
+echo "🌱 Criando tabelas e executando seed do banco de dados..."
+npm run db:seed
+
+# 7. Iniciar com PM2 (detectando caminho correto do dist)
 echo "⚡ Inicializando aplicação com PM2..."
+MAIN_JS="dist/main.js"
+if [ -f "dist/src/main.js" ]; then
+    MAIN_JS="dist/src/main.js"
+fi
+
+echo "Arquivo de entrada: $MAIN_JS"
 pm2 delete synccord-api 2>/dev/null || true
-pm2 start dist/main.js --name "synccord-api"
+pm2 start "$MAIN_JS" --name "synccord-api"
 pm2 save
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u "$USER" --hp "$HOME" || true
 
