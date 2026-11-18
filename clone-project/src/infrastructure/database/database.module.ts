@@ -18,9 +18,11 @@ export type AppDatabase = NodePgDatabase<typeof schema>;
           process.env.DATABASE_URL ||
           'postgresql://postgres:postgres@localhost:5432/synccord_db';
 
-        const isSsl =
-          connectionString.includes('sslmode=require') ||
-          process.env.NODE_ENV === 'production';
+        const isLocalhost =
+          connectionString.includes('localhost') ||
+          connectionString.includes('127.0.0.1');
+
+        const isSsl = !isLocalhost && connectionString.includes('sslmode=require');
 
         const pool = new Pool({
           connectionString,
