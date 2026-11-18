@@ -74,3 +74,10 @@ export const channelOverwritesTable = pgTable('channel_overwrites', {
   deny: varchar('deny', { length: 32 }).notNull().default('0'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const passwordResetTokensTable = pgTable('password_reset_tokens', {
+  token: varchar('token', { length: 64 }).primaryKey(),
+  userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  used: boolean('used').notNull().default(false),
+});

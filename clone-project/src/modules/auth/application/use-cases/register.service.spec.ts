@@ -13,6 +13,10 @@ describe('RegisterService Unit Tests', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
       save: jest.fn().mockImplementation((user: User) => Promise.resolve(user)),
+      updatePassword: jest.fn(),
+      createPasswordResetToken: jest.fn(),
+      findPasswordResetToken: jest.fn(),
+      markPasswordResetTokenUsed: jest.fn(),
     };
 
     mockJwtService = {

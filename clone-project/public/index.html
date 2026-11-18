@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SyncCord</title>
   <link rel="stylesheet" href="/css/discord.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='scd_fav' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%236e7bff'/><stop offset='100%25' stop-color='%235865F2'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23scd_fav)'/><text x='50' y='65' font-family='Arial Black, Arial, sans-serif' font-weight='900' font-size='32' fill='%23ffffff' text-anchor='middle'>SCD</text></svg>">
 </head>
 <body>
 
@@ -442,11 +442,79 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Senha</label>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" style="margin-bottom: 0;">Senha</label>
+            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 600;">Esqueceu sua senha?</a>
+          </div>
           <input type="password" class="form-input" id="auth-password" placeholder="••••••••" required>
         </div>
 
         <button type="submit" class="btn-primary" id="auth-submit-btn">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD MODAL -->
+  <div class="modal-overlay" id="forgot-password-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-title">Redefinir sua senha</div>
+      <div class="modal-subtitle">Insira o e-mail associado à sua conta para receber o link de redefinição de senha.</div>
+
+      <form id="forgot-password-form" onsubmit="handleForgotPasswordSubmit(event)" style="display: flex; flex-direction: column; gap: 14px; margin-top: 8px;">
+        <div class="form-group">
+          <label class="form-label">E-MAIL</label>
+          <input type="email" class="form-input" id="forgot-password-email" placeholder="nome@exemplo.com" required>
+        </div>
+
+        <div id="forgot-password-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+          <button type="button" class="btn-secondary" onclick="closeModal('forgot-password-modal')">Voltar</button>
+          <button type="submit" class="btn-primary" id="forgot-password-submit-btn" style="padding: 0 20px;">Enviar Link</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RESET PASSWORD MODAL -->
+  <div class="modal-overlay" id="reset-password-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 460px; padding: 28px 24px;">
+      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;">Criar Nova Senha</div>
+      <div class="modal-subtitle">Digite e confirme sua nova senha abaixo. O link de redefinição foi autenticado.</div>
+
+      <input type="hidden" id="reset-password-token" value="">
+
+      <form id="reset-password-form" onsubmit="handleResetPasswordSubmit(event)" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
+        <div class="form-group">
+          <label class="form-label">NOVA SENHA</label>
+          <div class="password-input-wrapper">
+            <input type="password" class="form-input" id="reset-new-password" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-new-password')" title="Mostrar/Ocultar senha">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">CONFIRMAR NOVA SENHA</label>
+          <div class="password-input-wrapper">
+            <input type="password" class="form-input" id="reset-confirm-password" placeholder="Repita a nova senha" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-confirm-password')" title="Mostrar/Ocultar senha">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="reset-password-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+          <button type="button" class="btn-secondary" onclick="closeModal('reset-password-modal')">Cancelar</button>
+          <button type="submit" class="btn-primary" id="reset-password-submit-btn" style="padding: 0 24px;">Salvar Nova Senha</button>
+        </div>
       </form>
     </div>
   </div>

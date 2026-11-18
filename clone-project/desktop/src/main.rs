@@ -15,7 +15,7 @@ use tray_icon::{
 };
 use wry::WebViewBuilder;
 
-/// Generates a 32x32 RGBA icon for SyncCord (Blurple #5865F2 with rounded corners and controller mask)
+/// Generates a 32x32 RGBA icon for SyncCord (Blurple #5865F2 with rounded corners and SCD logo)
 fn create_discord_icon_rgba(size: u32) -> (Vec<u8>, u32, u32) {
     let mut rgba = vec![0u8; (size * size * 4) as usize];
     let radius = (size as f32 * 0.22) as i32;
@@ -44,33 +44,34 @@ fn create_discord_icon_rgba(size: u32) -> (Vec<u8>, u32, u32) {
 
             let dist_sq = dx * dx + dy * dy;
             if dist_sq <= radius * radius {
-                // Background: Discord Blurple #5865F2
+                // Background: SyncCord Blurple #5865F2
                 rgba[idx] = 88;
                 rgba[idx + 1] = 101;
                 rgba[idx + 2] = 242;
                 rgba[idx + 3] = 255;
 
-                // Discord mask eyes and smile in center
-                // Left eye centered around (x=11, y=14)
-                let eye1_dx = x - 11;
-                let eye1_dy = y - 14;
-                if eye1_dx * eye1_dx + eye1_dy * eye1_dy <= 5 {
-                    rgba[idx] = 255;
-                    rgba[idx + 1] = 255;
-                    rgba[idx + 2] = 255;
-                }
+                // Draw "SCD" branding in white
+                // Letter 'S' (x: 6..=11, y: 10..=21)
+                let is_s_top = (6..=11).contains(&x) && (10..=12).contains(&y);
+                let is_s_left_top = (6..=8).contains(&x) && (12..=16).contains(&y);
+                let is_s_mid = (6..=11).contains(&x) && (15..=17).contains(&y);
+                let is_s_right_bot = (9..=11).contains(&x) && (16..=20).contains(&y);
+                let is_s_bot = (6..=11).contains(&x) && (19..=21).contains(&y);
 
-                // Right eye centered around (x=20, y=14)
-                let eye2_dx = x - 20;
-                let eye2_dy = y - 14;
-                if eye2_dx * eye2_dx + eye2_dy * eye2_dy <= 5 {
-                    rgba[idx] = 255;
-                    rgba[idx + 1] = 255;
-                    rgba[idx + 2] = 255;
-                }
+                // Letter 'C' (x: 14..=19, y: 10..=21)
+                let is_c_left = (14..=16).contains(&x) && (10..=21).contains(&y);
+                let is_c_top = (14..=19).contains(&x) && (10..=12).contains(&y);
+                let is_c_bot = (14..=19).contains(&x) && (19..=21).contains(&y);
 
-                // Smile / Chin curve
-                if (12..=19).contains(&x) && (20..=22).contains(&y) {
+                // Letter 'D' (x: 22..=26, y: 10..=21)
+                let is_d_left = (22..=24).contains(&x) && (10..=21).contains(&y);
+                let is_d_top = (22..=25).contains(&x) && (10..=12).contains(&y);
+                let is_d_bot = (22..=25).contains(&x) && (19..=21).contains(&y);
+                let is_d_right = (25..=26).contains(&x) && (13..=18).contains(&y);
+
+                if is_s_top || is_s_left_top || is_s_mid || is_s_right_bot || is_s_bot
+                    || is_c_left || is_c_top || is_c_bot
+                    || is_d_left || is_d_top || is_d_bot || is_d_right {
                     rgba[idx] = 255;
                     rgba[idx + 1] = 255;
                     rgba[idx + 2] = 255;

@@ -1,5 +1,7 @@
-import { Controller, Post, Body, Get, Patch, UseGuards, Request, Inject, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Patch, UseGuards, Request, Inject, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { RegisterDto } from '../dtos/register.dto';
 import { LoginDto } from '../dtos/login.dto';
 import { RefreshTokenDto } from '../dtos/refresh-token.dto';
@@ -137,5 +139,45 @@ export class AuthController {
       avatar: updated.avatar,
       bot: updated.bot,
     };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset token/link' })
+  async forgotPassword(@Body() body: { email: string }): Promise<{ message: string; token?: string }> {
+    const email = (body?.email || '').trim().toLowerCase();
+    if (!email) {
+      return { message: 'Por favor, informe um e-mail válido.' };
+    }
+    const user = await this.userRepo.findByEmail(email);
+    if (!user) {
+      return { message: 'Se este e-mail estiver cadastrado, as instruções de recuperação foram geradas.' };
+    }
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await this.userRepo.createPasswordResetToken(token, user.id, expiresAt);
+    return {
+      message: 'Link de recuperação gerado com sucesso.',
+      token,
+    };
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset user password' })
+  async resetPassword(@Body() body: { token: string; password: string }): Promise<{ message: string }> {
+    const token = (body?.token || '').trim();
+    const newPassword = body?.password || '';
+    if (!token || !newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Token inválido ou senha com menos de 6 caracteres.');
+    }
+    const resetRecord = await this.userRepo.findPasswordResetToken(token);
+    if (!resetRecord || resetRecord.used || new Date() > new Date(resetRecord.expiresAt)) {
+      throw new BadRequestException('Token de redefinição inválido ou expirado.');
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.updatePassword(resetRecord.userId, hash);
+    await this.userRepo.markPasswordResetTokenUsed(token);
+    return { message: 'Senha atualizada com sucesso. Você já pode fazer login com sua nova senha.' };
   }
 }

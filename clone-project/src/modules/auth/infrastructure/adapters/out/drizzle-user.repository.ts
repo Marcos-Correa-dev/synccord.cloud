@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { User } from '@modules/auth/domain/user.entity';
 import { UserRepositoryPort } from '@modules/auth/application/ports/out/user-repository.port';
 import { DRIZZLE_DB, AppDatabase } from '@infrastructure/database/database.module';
-import { usersTable } from '@infrastructure/database/schema';
+import { usersTable, passwordResetTokensTable } from '@infrastructure/database/schema';
 
 @Injectable()
 export class DrizzleUserRepository implements UserRepositoryPort {
@@ -59,6 +59,47 @@ export class DrizzleUserRepository implements UserRepositoryPort {
       });
 
     return user;
+  }
+
+  async updatePassword(userId: string, newPasswordHash: string): Promise<void> {
+    await this.db
+      .update(usersTable)
+      .set({
+        passwordHash: newPasswordHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, userId));
+  }
+
+  async createPasswordResetToken(token: string, userId: string, expiresAt: Date): Promise<void> {
+    await this.db.insert(passwordResetTokensTable).values({
+      token,
+      userId,
+      expiresAt,
+      used: false,
+    });
+  }
+
+  async findPasswordResetToken(token: string): Promise<{ userId: string; expiresAt: Date; used: boolean } | null> {
+    const rows = await this.db
+      .select()
+      .from(passwordResetTokensTable)
+      .where(eq(passwordResetTokensTable.token, token))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    return {
+      userId: rows[0].userId,
+      expiresAt: rows[0].expiresAt,
+      used: rows[0].used,
+    };
+  }
+
+  async markPasswordResetTokenUsed(token: string): Promise<void> {
+    await this.db
+      .update(passwordResetTokensTable)
+      .set({ used: true })
+      .where(eq(passwordResetTokensTable.token, token));
   }
 
   private mapToDomain(row: typeof usersTable.$inferSelect): User {

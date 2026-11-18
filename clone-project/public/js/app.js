@@ -298,8 +298,13 @@
   let isChatOpenInVoice = false;
   let selectedChannelType = 0;
 
-  // Multi-stream Map: userId -> { stream, username, isLocal, type: 'screen' | 'camera' }
+  // Multi-stream Map: streamKey (`${userId}:screen` or `${userId}:cam`) -> { stream, username, isLocal, type, userId }
   const activeStreams = new Map();
+  // Max simultaneous sharers (screen + cam combined across all users)
+  const MAX_CONCURRENT_STREAMS = 4;
+  // Mixed audio context for screen audio + mic mixing
+  let mixedAudioContext = null;
+  let mixedAudioStream = null;
   // WebRTC Peer Connections: userId -> RTCPeerConnection
   const peerConnections = new Map();
   // Remote audio elements for direct audio output: userId -> HTMLAudioElement
@@ -333,7 +338,7 @@
     MIC_OFF: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="color: var(--red);"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.24-5.3-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c1.33-.19 2.53-.78 3.53-1.62l3.2 3.2 1.27-1.27L4.27 3z"/></svg>',
     DEAF_ON: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h3a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 1 1 14 0v1h-3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h3a2 2 0 0 0 2-2v-7a9 9 0 0 0-9-9z"/></svg>',
     DEAF_OFF: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="color: var(--red);"><path d="M12 4a8 8 0 0 0-8 8v7a2 2 0 0 0 2 2h2a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H6v-2a6 6 0 0 1 11.66-2l1.6-1.6A7.96 7.96 0 0 0 12 4zm6 9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2a2 2 0 0 0 2-2v-7a8 8 0 0 0-.58-3l-1.53 1.53c.07.47.11.96.11 1.47v2h-2zM3.27 2L2 3.27 20.73 22 22 20.73 3.27 2z"/></svg>',
-    HOME: '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.73 4.87a18.2 18.2 0 0 0-4.6-1.44c-.21.37-.45.86-.61 1.25a16.8 16.8 0 0 0-5.04 0 12.3 12.3 0 0 0-.62-1.25 18.17 18.17 0 0 0-4.6 1.44C1.3 9.28.53 13.56.88 17.79a18.3 18.3 0 0 0 5.6 2.83 14.2 14.2 0 0 0 1.2-1.95 11.8 11.8 0 0 1-1.9-.91c.16-.12.32-.24.47-.37a12.8 12.8 0 0 0 11.5 0c.15.13.31.25.47.37-.6.35-1.24.66-1.9.91.36.68.76 1.34 1.2 1.95a18.24 18.24 0 0 0 5.61-2.83c.42-4.85-.73-9.1-3.4-12.92zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.83-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z"/></svg>',
+    HOME: '<svg width="26" height="26" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="scdHomeG" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6e7bff"/><stop offset="100%" stop-color="#5865F2"/></linearGradient></defs><rect width="100" height="100" rx="26" fill="url(#scdHomeG)"/><text x="50" y="65" font-family="-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial Black,sans-serif" font-weight="900" font-size="34" fill="#ffffff" text-anchor="middle" letter-spacing="-1">SCD</text></svg>',
   };
 
   // DOM Elements
@@ -414,7 +419,12 @@
     // Load active locale translations on app startup
     loadTranslations(currentLocale);
 
-    if (!token && !refreshToken) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const resetToken = urlParams.get('reset') || urlParams.get('token');
+
+    if (resetToken) {
+      openResetPasswordModal(resetToken);
+    } else if (!token && !refreshToken) {
       showAuthModal(true);
     } else {
       updateUserPanel();
@@ -455,7 +465,7 @@
     }
   }
 
-  // Check URL parameters for invites
+  // Check URL parameters for invites & password reset
   let pendingInviteChannelId = null;
   function checkUrlInvites() {
     const params = new URLSearchParams(window.location.search);
@@ -465,6 +475,10 @@
       api(`/guilds/${inviteGuild}/members`, { method: 'POST' })
         .then(() => loadGuilds())
         .catch(() => {});
+    }
+    const resetToken = params.get('reset') || params.get('token');
+    if (resetToken) {
+      openResetPasswordModal(resetToken);
     }
   }
 
@@ -616,7 +630,7 @@
     renderVoiceCallStage();
   }
 
-  // Handle Multi-stream updates for simultaneous screensharing
+  // Handle Multi-stream updates for simultaneous screensharing (keyed by `${userId}:screen`)
   function handleVoiceStreamUpdate(data) {
     const state = voiceStates.find((s) => s.user.id === data.userId);
     if (state) {
@@ -624,17 +638,19 @@
       state.video = data.video;
     }
 
+    const streamKey = `${data.userId}:screen`;
     if (data.streaming) {
-      const existing = activeStreams.get(data.userId);
+      const existing = activeStreams.get(streamKey);
       const isMe = currentUser && data.userId === currentUser.id;
-      activeStreams.set(data.userId, {
+      activeStreams.set(streamKey, {
         stream: isMe ? screenStream : (existing?.stream || null),
-        username: data.username || state?.user.username || 'Membro',
+        username: data.username || state?.user?.username || 'Membro',
         isLocal: isMe,
         type: 'screen',
+        userId: data.userId,
       });
     } else {
-      activeStreams.delete(data.userId);
+      activeStreams.delete(streamKey);
     }
 
     renderVoiceUsers();
@@ -1654,43 +1670,50 @@
     }
 
     if (voiceParticipantsGridEl) {
-      voiceParticipantsGridEl.innerHTML = '';
-      const participants = voiceStates.filter((s) => s.channelId === connectedVoiceChannel.id);
+      if (activeStreams.size > 0) {
+        // Bug 3 Fix: When screen/video stream is active, hide participant card squares
+        voiceParticipantsGridEl.style.display = 'none';
+        voiceParticipantsGridEl.innerHTML = '';
+      } else {
+        voiceParticipantsGridEl.style.display = 'grid';
+        voiceParticipantsGridEl.innerHTML = '';
+        const participants = voiceStates.filter((s) => s.channelId === connectedVoiceChannel.id);
 
-      participants.forEach((s) => {
-        const u = s.user;
-        const isMe = currentUser && u.id === currentUser.id;
-        const username = isMe ? currentUser.username : u.username;
-        const avatar = isMe ? currentUser.avatar : u.avatar;
-        const initials = (username || '??').substring(0, 2).toUpperCase();
+        participants.forEach((s) => {
+          const u = s.user;
+          const isMe = currentUser && u.id === currentUser.id;
+          const username = isMe ? currentUser.username : u.username;
+          const avatar = isMe ? currentUser.avatar : u.avatar;
+          const initials = (username || '??').substring(0, 2).toUpperCase();
 
-        const card = document.createElement('div');
-        card.className = `voice-participant-card ${s.speaking ? 'speaking' : ''}`;
-        card.id = `participant-card-${u.id}`;
+          const card = document.createElement('div');
+          card.className = `voice-participant-card ${s.speaking ? 'speaking' : ''}`;
+          card.id = `participant-card-${u.id}`;
 
-        card.innerHTML = `
-          <div class="card-reaction-overlay" id="reaction-overlay-${u.id}"></div>
-          <div class="card-avatar-wrapper">
-            <div class="card-avatar ${s.speaking ? 'speaking' : ''}" id="card-avatar-${u.id}">
-              ${avatar ? `<img src="${escapeHtml(avatar)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;" />` : initials}
+          card.innerHTML = `
+            <div class="card-reaction-overlay" id="reaction-overlay-${u.id}"></div>
+            <div class="card-avatar-wrapper">
+              <div class="card-avatar ${s.speaking ? 'speaking' : ''}" id="card-avatar-${u.id}">
+                ${avatar ? `<img src="${escapeHtml(avatar)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;" />` : initials}
+              </div>
             </div>
-          </div>
-          <div class="card-nameplate">
-            <span>${escapeHtml(username)}</span>
-            ${s.streaming ? '<span class="live-badge">AO VIVO</span>' : ''}
-            ${s.selfMute ? '<span>🔇</span>' : ''}
-          </div>
-        `;
+            <div class="card-nameplate">
+              <span>${escapeHtml(username)}</span>
+              ${s.streaming ? '<span class="live-badge">AO VIVO</span>' : ''}
+              ${s.selfMute ? '<span>🔇</span>' : ''}
+            </div>
+          `;
 
-        voiceParticipantsGridEl.appendChild(card);
-      });
+          voiceParticipantsGridEl.appendChild(card);
+        });
+      }
     }
 
     renderVideoGrid();
     updateDockButtonsState();
   }
 
-  // Render Multi-Stream Video Grid (Simultaneous Multi-Screen Sharing)
+  // Render Multi-Stream Video Grid (Simultaneous Multi-Screen Sharing with PiP overlay)
   function renderVideoGrid() {
     if (!voiceVideoGridEl) return;
 
@@ -1712,34 +1735,46 @@
     // Remove obsolete cards that are no longer in activeStreams
     const currentCardElements = Array.from(voiceVideoGridEl.children);
     currentCardElements.forEach((cardEl) => {
-      const uId = cardEl.id.replace('video-grid-item-', '');
-      if (!activeStreams.has(uId)) {
+      const domKey = cardEl.getAttribute('data-stream-key');
+      if (domKey && !activeStreams.has(domKey)) {
         cardEl.remove();
       }
     });
 
-    activeStreams.forEach((item, userId) => {
-      let card = document.getElementById(`video-grid-item-${userId}`);
-      let videoEl = document.getElementById(`stream-player-${userId}`);
+    activeStreams.forEach((item, streamKey) => {
+      const sanitizedKey = String(streamKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const ownerUserId = item.userId || (String(streamKey).includes(':') ? String(streamKey).split(':')[0] : String(streamKey));
+      const userState = voiceStates.find((s) => s.user && s.user.id === ownerUserId);
+      const isMe = currentUser && ownerUserId === currentUser.id;
+      const avatar = isMe ? currentUser.avatar : userState?.user?.avatar;
+      const displayUsername = item.username || (isMe ? currentUser.username : (userState?.user?.username || 'Membro'));
+      const initials = (displayUsername || '??').substring(0, 2).toUpperCase();
+      const isCurrentlySpeaking = isMe ? (!isMuted && micMeterFillEl && parseFloat(micMeterFillEl.style.width || '0') > 0) : !!userState?.speaking;
+
+      let card = document.getElementById(`video-grid-item-${sanitizedKey}`);
+      let videoEl = document.getElementById(`stream-player-${sanitizedKey}`);
 
       if (!card) {
         card = document.createElement('div');
         card.className = 'video-grid-item';
-        card.id = `video-grid-item-${userId}`;
+        card.id = `video-grid-item-${sanitizedKey}`;
+        card.setAttribute('data-stream-key', streamKey);
+        card.setAttribute('data-user-id', ownerUserId);
 
         videoEl = document.createElement('video');
         videoEl.className = 'voice-video-element';
-        videoEl.id = `stream-player-${userId}`;
+        videoEl.id = `stream-player-${sanitizedKey}`;
         videoEl.autoplay = true;
         videoEl.playsInline = true;
         // Local screen is muted to avoid loopback
         videoEl.muted = true;
 
+        const isCam = item.type === 'camera';
         const bar = document.createElement('div');
         bar.className = 'stream-floating-bar';
         bar.innerHTML = `
           <span class="live-badge">AO VIVO</span>
-          <span class="stream-title-label" style="font-weight: 600;">Tela de ${escapeHtml(item.username)}</span>
+          <span class="stream-title-label" style="font-weight: 600;">${isCam ? 'Câmera de' : 'Tela de'} ${escapeHtml(displayUsername)}</span>
           ${item.isLocal ? '<button class="stage-action-btn stop-stream-btn" style="margin-left: auto;">Parar Transmissão</button>' : ''}
           <button class="stage-action-btn fullscreen-stream-btn" title="Tela Cheia" style="${item.isLocal ? '' : 'margin-left: auto;'}">⛶</button>
         `;
@@ -1757,12 +1792,29 @@
           if (videoEl.requestFullscreen) videoEl.requestFullscreen();
         };
 
+        // Bug 3 Fix: Picture-in-Picture badge in bottom-left corner of the stream card
+        const pipBadge = document.createElement('div');
+        pipBadge.className = 'stream-pip-badge';
+        pipBadge.id = `stream-pip-${sanitizedKey}`;
+        pipBadge.innerHTML = `
+          <div class="stream-pip-avatar ${isCurrentlySpeaking ? 'speaking' : ''}" id="stream-pip-avatar-${sanitizedKey}" data-user-id="${ownerUserId}">
+            ${avatar ? `<img src="${escapeHtml(avatar)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;" />` : initials}
+          </div>
+          <span class="stream-pip-name">${escapeHtml(displayUsername)}</span>
+        `;
+
         card.appendChild(videoEl);
         card.appendChild(bar);
+        card.appendChild(pipBadge);
         voiceVideoGridEl.appendChild(card);
       } else {
         const titleEl = card.querySelector('.stream-title-label');
-        if (titleEl) titleEl.textContent = `Tela de ${item.username}`;
+        if (titleEl) {
+          const isCam = item.type === 'camera';
+          titleEl.textContent = `${isCam ? 'Câmera de' : 'Tela de'} ${displayUsername}`;
+        }
+        const pipNameEl = card.querySelector('.stream-pip-name');
+        if (pipNameEl) pipNameEl.textContent = displayUsername;
       }
 
       if (videoEl && item.stream && videoEl.srcObject !== item.stream) {
@@ -2033,7 +2085,7 @@
     soundboardPopoverEl.style.display = shouldShow ? 'block' : 'none';
   };
 
-  // Real-time Screen Sharing (Supports Multiple People Sharing Simultaneously)
+  // Real-time Screen Sharing (Supports Multiple People Sharing Simultaneously, up to 4)
   async function toggleScreenShare() {
     if (!connectedVoiceChannel) {
       alert('Você precisa entrar em um canal de voz para compartilhar a tela.');
@@ -2042,6 +2094,12 @@
 
     if (screenStream) {
       stopScreenShare();
+      return;
+    }
+
+    // Bug 1: Concurrency limit - max 4 simultaneous streams
+    if (activeStreams.size >= MAX_CONCURRENT_STREAMS && !activeStreams.has(`${currentUser.id}:screen`)) {
+      alert('Limite máximo de 4 transmissões simultâneas atingido.');
       return;
     }
 
@@ -2056,15 +2114,25 @@
         audio: true,
       });
 
-      // Add local screen to multi-stream activeStreams map
-      activeStreams.set(currentUser.id, {
+      // Add local screen to multi-stream activeStreams map with composite key
+      activeStreams.set(`${currentUser.id}:screen`, {
         stream: screenStream,
         username: currentUser.username,
         isLocal: true,
         type: 'screen',
+        userId: currentUser.id,
       });
 
       renderVideoGrid();
+
+      // Bug 2: If screen audio was selected, seamlessly mix mic + screen audio dynamically
+      const screenAudioTracks = screenStream.getAudioTracks();
+      if (screenAudioTracks.length > 0) {
+        screenAudioTracks[0].onended = () => {
+          updateOutgoingAudioOnAllPeers();
+        };
+      }
+      updateOutgoingAudioOnAllPeers();
 
       screenStream.getVideoTracks()[0].onended = () => {
         stopScreenShare();
@@ -2105,7 +2173,7 @@
           const senders = pc.getSenders();
           let removed = false;
           senders.forEach((sender) => {
-            if (sender.track && screenTracks.some((st) => st.id === sender.track.id)) {
+            if (sender.track && screenTracks.some((st) => st.id === sender.track.id && st.kind === 'video')) {
               try {
                 pc.removeTrack(sender);
                 removed = true;
@@ -2123,8 +2191,16 @@
       screenStream = null;
     }
 
+    // Bug 2: Revert outgoing audio to raw mic cleanly
+    if (mixedAudioContext) {
+      mixedAudioContext.close().catch(() => {});
+      mixedAudioContext = null;
+      mixedAudioStream = null;
+    }
+    updateOutgoingAudioOnAllPeers();
+
     if (currentUser) {
-      activeStreams.delete(currentUser.id);
+      activeStreams.delete(`${currentUser.id}:screen`);
     }
     renderVideoGrid();
 
@@ -2159,7 +2235,7 @@
     }
   }
 
-  // Real-time Webcam Video
+  // Real-time Webcam Video (Supports up to 4 concurrent video streams)
   async function toggleCamera() {
     if (!connectedVoiceChannel) {
       alert('Você precisa entrar em um canal de voz para ativar a câmera.');
@@ -2168,6 +2244,12 @@
 
     if (cameraStream) {
       stopCamera();
+      return;
+    }
+
+    // Bug 1: Concurrency limit - max 4 simultaneous streams
+    if (activeStreams.size >= MAX_CONCURRENT_STREAMS && !activeStreams.has(`${currentUser.id}:cam`)) {
+      alert('Limite máximo de 4 transmissões simultâneas atingido.');
       return;
     }
 
@@ -2182,11 +2264,12 @@
         audio: false,
       });
 
-      activeStreams.set(`${currentUser.id}_cam`, {
+      activeStreams.set(`${currentUser.id}:cam`, {
         stream: cameraStream,
         username: `${currentUser.username} (Câmera)`,
         isLocal: true,
         type: 'camera',
+        userId: currentUser.id,
       });
       renderVideoGrid();
 
@@ -2246,7 +2329,7 @@
     }
 
     if (currentUser) {
-      activeStreams.delete(`${currentUser.id}_cam`);
+      activeStreams.delete(`${currentUser.id}:cam`);
     }
     renderVideoGrid();
 
@@ -2280,34 +2363,94 @@
     }
   }
 
-  // Sync local tracks (mic, screen, cam) to RTCPeerConnection avoiding duplicates
-  function syncLocalTracksWithPeer(pc) {
-    const senders = pc.getSenders();
+  // Bug 2: Get active outgoing audio track (mixes mic + screen audio into one seamless track)
+  function getActiveOutgoingAudioTrack() {
+    const screenAudioTracks = screenStream ? screenStream.getAudioTracks() : [];
+    const micAudioTrack = localAudioStream ? localAudioStream.getAudioTracks()[0] : null;
 
-    // 1. Microphone Audio Track
-    if (localAudioStream) {
-      const audioTrack = localAudioStream.getAudioTracks()[0];
-      if (audioTrack) {
-        const hasAudioSender = senders.some((s) => s.track && s.track.kind === 'audio');
-        if (!hasAudioSender) {
-          try {
-            pc.addTrack(audioTrack, localAudioStream);
-          } catch (e) {
-            console.warn('Error adding audio track to peer connection:', e);
-          }
+    if (screenAudioTracks.length > 0 && micAudioTrack) {
+      try {
+        if (!mixedAudioContext || mixedAudioContext.state === 'closed') {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          mixedAudioContext = new AudioCtx();
         }
+        if (mixedAudioContext.state === 'suspended') {
+          mixedAudioContext.resume().catch(() => {});
+        }
+
+        const mixedDestination = mixedAudioContext.createMediaStreamDestination();
+        const micSource = mixedAudioContext.createMediaStreamSource(new MediaStream([micAudioTrack]));
+        micSource.connect(mixedDestination);
+
+        const screenSource = mixedAudioContext.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+        screenSource.connect(mixedDestination);
+
+        mixedAudioStream = mixedDestination.stream;
+        return mixedAudioStream.getAudioTracks()[0];
+      } catch (err) {
+        console.warn('[WebAudio] Audio mixing fallback to microphone:', err);
+        return micAudioTrack;
       }
     }
 
-    // 2. Screen Share Video Track
+    if (screenAudioTracks.length > 0) {
+      return screenAudioTracks[0];
+    }
+
+    return micAudioTrack || null;
+  }
+
+  // Bug 2: Propagate outgoing audio track change to all peers without dropping connection
+  function updateOutgoingAudioOnAllPeers() {
+    const outgoingTrack = getActiveOutgoingAudioTrack();
+    if (!outgoingTrack) return;
+
+    peerConnections.forEach((pc, targetUserId) => {
+      const senders = pc.getSenders();
+      const audioSender = senders.find((s) => s.track && s.track.kind === 'audio');
+      if (audioSender) {
+        if (audioSender.track?.id !== outgoingTrack.id) {
+          audioSender.replaceTrack(outgoingTrack).catch((err) => {
+            console.warn(`[WebRTC] Error replacing audio track for ${targetUserId}:`, err);
+          });
+        }
+      } else {
+        try {
+          pc.addTrack(outgoingTrack, new MediaStream([outgoingTrack]));
+          renegotiateWithPeer(targetUserId, pc);
+        } catch (err) {}
+      }
+    });
+  }
+
+  // Sync local tracks (mic/mixed-audio, screen video, cam video) to RTCPeerConnection avoiding duplicates
+  function syncLocalTracksWithPeer(pc) {
+    const senders = pc.getSenders();
+
+    // 1. Microphone + Screen Mixed Audio Track
+    const outgoingAudioTrack = getActiveOutgoingAudioTrack();
+    if (outgoingAudioTrack) {
+      const audioSender = senders.find((s) => s.track && s.track.kind === 'audio');
+      if (!audioSender) {
+        try {
+          pc.addTrack(outgoingAudioTrack, new MediaStream([outgoingAudioTrack]));
+        } catch (e) {
+          console.warn('Error adding audio track to peer connection:', e);
+        }
+      } else if (audioSender.track?.id !== outgoingAudioTrack.id) {
+        audioSender.replaceTrack(outgoingAudioTrack).catch(() => {});
+      }
+    }
+
+    // 2. Screen Share Video Track (Video ONLY, audio is mixed into outgoing audio track)
     if (screenStream) {
-      screenStream.getTracks().forEach((track) => {
+      screenStream.getVideoTracks().forEach((track) => {
         const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
         if (!alreadyAdded) {
           try {
             pc.addTrack(track, screenStream);
           } catch (e) {
-            console.warn('Error adding screen track to peer connection:', e);
+            console.warn('Error adding screen video track to peer connection:', e);
           }
         }
       });
@@ -2315,13 +2458,13 @@
 
     // 3. Camera Video Track
     if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => {
+      cameraStream.getVideoTracks().forEach((track) => {
         const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
         if (!alreadyAdded) {
           try {
             pc.addTrack(track, cameraStream);
           } catch (e) {
-            console.warn('Error adding camera track to peer connection:', e);
+            console.warn('Error adding camera video track to peer connection:', e);
           }
         }
       });
@@ -2390,16 +2533,35 @@
         const remoteUser = voiceStates.find((s) => s.user.id === targetUserId)?.user;
         const username = remoteUser ? remoteUser.username : 'Membro';
 
-        activeStreams.set(targetUserId, {
+        let streamKey = `${targetUserId}:screen`;
+        let streamType = 'screen';
+        let streamLabel = username;
+
+        if (activeStreams.has(`${targetUserId}:screen`)) {
+          streamKey = `${targetUserId}:cam`;
+          streamType = 'camera';
+          streamLabel = `${username} (Câmera)`;
+        } else {
+          const userState = voiceStates.find((s) => s.user.id === targetUserId);
+          if (userState && userState.video && !userState.streaming) {
+            streamKey = `${targetUserId}:cam`;
+            streamType = 'camera';
+            streamLabel = `${username} (Câmera)`;
+          }
+        }
+
+        activeStreams.set(streamKey, {
           stream: remoteStream,
-          username,
+          trackId: track.id,
+          username: streamLabel,
           isLocal: false,
-          type: 'screen',
+          type: streamType,
+          userId: targetUserId,
         });
         renderVideoGrid();
 
         track.onended = () => {
-          activeStreams.delete(targetUserId);
+          activeStreams.delete(streamKey);
           renderVideoGrid();
         };
       }
@@ -2656,6 +2818,11 @@
     if (cardEl) cardEl.classList.toggle('speaking', speaking);
     const cardAvatarEl = document.getElementById(`card-avatar-${userId}`);
     if (cardAvatarEl) cardAvatarEl.classList.toggle('speaking', speaking);
+
+    // Bug 3: Update speaking ring on PiP overlay inside active stream cards
+    document.querySelectorAll(`.stream-pip-avatar[data-user-id="${userId}"]`).forEach((pip) => {
+      pip.classList.toggle('speaking', speaking);
+    });
   }
 
   // Select Channel
@@ -5280,12 +5447,179 @@
 
   function closeModal(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.remove('open');
+    if (el) {
+      el.classList.remove('open');
+      if (id === 'forgot-password-modal' || id === 'reset-password-modal') {
+        el.style.display = 'none';
+      }
+    }
     if (id === 'create-guild-modal') {
       handleRemoveGuildIcon();
     }
   }
   window.closeModal = closeModal;
+
+  // Password Reset Functions (Bug 4)
+  function openForgotPasswordModal() {
+    showAuthModal(false);
+    const modal = document.getElementById('forgot-password-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+      const emailInput = document.getElementById('forgot-password-email');
+      const authEmail = document.getElementById('auth-email');
+      if (emailInput && authEmail && authEmail.value) {
+        emailInput.value = authEmail.value;
+      }
+      const feedback = document.getElementById('forgot-password-feedback');
+      if (feedback) feedback.style.display = 'none';
+    }
+  }
+  window.openForgotPasswordModal = openForgotPasswordModal;
+
+  async function handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    const emailInput = document.getElementById('forgot-password-email');
+    const submitBtn = document.getElementById('forgot-password-submit-btn');
+    const feedback = document.getElementById('forgot-password-feedback');
+    if (!emailInput || !emailInput.value) return;
+
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Enviando...';
+      }
+      const res = await api('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email: emailInput.value.trim() }),
+      });
+
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(35, 165, 90, 0.15)';
+        feedback.style.border = '1px solid #23a55a';
+        feedback.style.color = '#23a55a';
+        feedback.innerHTML = `<strong>Sucesso:</strong> ${res.message || 'Instruções enviadas!'}${res.token ? `<br><br><button type="button" class="btn-primary" style="margin-top: 6px; padding: 6px 14px; font-size: 13px;" onclick="openResetPasswordModal('${res.token}')">Abrir Tela de Redefinição Agora</button>` : ''}`;
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = err.message || 'Falha ao solicitar redefinição.';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Enviar Link';
+      }
+    }
+  }
+  window.handleForgotPasswordSubmit = handleForgotPasswordSubmit;
+
+  function openResetPasswordModal(tokenVal) {
+    closeModal('forgot-password-modal');
+    showAuthModal(false);
+    const modal = document.getElementById('reset-password-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+      const tokenInput = document.getElementById('reset-password-token');
+      if (tokenInput) tokenInput.value = tokenVal || '';
+      const feedback = document.getElementById('reset-password-feedback');
+      if (feedback) feedback.style.display = 'none';
+      const pw1 = document.getElementById('reset-new-password');
+      const pw2 = document.getElementById('reset-confirm-password');
+      if (pw1) pw1.value = '';
+      if (pw2) pw2.value = '';
+    }
+  }
+  window.openResetPasswordModal = openResetPasswordModal;
+
+  async function handleResetPasswordSubmit(e) {
+    e.preventDefault();
+    const tokenInput = document.getElementById('reset-password-token');
+    const pw1 = document.getElementById('reset-new-password');
+    const pw2 = document.getElementById('reset-confirm-password');
+    const submitBtn = document.getElementById('reset-password-submit-btn');
+    const feedback = document.getElementById('reset-password-feedback');
+
+    const tokenVal = (tokenInput?.value || '').trim();
+    const val1 = pw1?.value || '';
+    const val2 = pw2?.value || '';
+
+    if (!tokenVal) {
+      alert('Token de redefinição não encontrado. Solicite um novo link.');
+      return;
+    }
+
+    if (val1.length < 6) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+      }
+      return;
+    }
+
+    if (val1 !== val2) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = 'As senhas não coincidem. Digite novamente.';
+      }
+      return;
+    }
+
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Atualizando...';
+      }
+      const res = await api('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token: tokenVal, password: val1 }),
+      });
+
+      alert(res.message || 'Senha alterada com sucesso! Faça login com sua nova senha.');
+      closeModal('reset-password-modal');
+      // Clean query params from URL
+      if (window.history && window.history.replaceState) {
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+      showAuthModal(true);
+      if (typeof window.setAuthTab === 'function') {
+        window.setAuthTab('login');
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = err.message || 'Erro ao redefinir senha.';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Salvar Nova Senha';
+      }
+    }
+  }
+  window.handleResetPasswordSubmit = handleResetPasswordSubmit;
+
+  function togglePasswordVisibility(fieldId) {
+    const input = document.getElementById(fieldId);
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+  window.togglePasswordVisibility = togglePasswordVisibility;
 
   window.logout = logout;
 

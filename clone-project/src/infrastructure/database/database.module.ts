@@ -129,9 +129,17 @@ export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          token VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at TIMESTAMPTZ NOT NULL,
+          used BOOLEAN NOT NULL DEFAULT FALSE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_roles_guild_id ON roles(guild_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_channel_id ON channel_overwrites(channel_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_target_id ON channel_overwrites(target_id);
+        CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
       `);
       this.logger.log('Database tables verified / initialized successfully');
     } catch (err: unknown) {
