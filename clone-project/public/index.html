@@ -568,14 +568,20 @@
 
       <form id="join-guild-form" style="display: none; flex-direction: column; gap: 14px;">
         <div class="form-group">
-          <label class="form-label">LINK OU ID DO SERVIDOR</label>
-          <input type="text" class="form-input" id="join-guild-input" placeholder="ex: 1569380463196377089 ou link" required>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Cole o ID do servidor ou o link de convite recebido.</div>
+          <label class="form-label">LINK, ID OU NOME DO SERVIDOR</label>
+          <input type="text" class="form-input" id="join-guild-input" placeholder="ex: heldbox, 1569380463196377089 ou link" required>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Cole o link de convite, ID numérico ou nome do servidor.</div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
           <button type="button" class="btn-secondary" onclick="closeModal('create-guild-modal')">Voltar</button>
           <button type="submit" class="btn-primary" style="padding: 0 20px;">Entrar no Servidor</button>
+        </div>
+
+        <!-- Lista de Servidores da Comunidade para entrar com 1 clique -->
+        <div id="discover-guilds-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Servidores Disponíveis na Comunidade</div>
+          <div id="discover-guilds-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;"></div>
         </div>
       </form>
     </div>

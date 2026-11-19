@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Inject, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, Inject, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/infrastructure/adapters/out/jwt-auth.guard';
 import { CreateGuildDto } from '../dtos/create-guild.dto';
@@ -7,7 +7,7 @@ import { CreateGuildUseCase, CREATE_GUILD_USE_CASE } from '@modules/guilds/appli
 import { ListUserGuildsUseCase, LIST_USER_GUILDS_USE_CASE } from '@modules/guilds/application/ports/in/list-user-guilds.use-case';
 import { ListGuildMembersUseCase, LIST_GUILD_MEMBERS_USE_CASE } from '@modules/guilds/application/ports/in/list-guild-members.use-case';
 import { JoinGuildUseCase, JOIN_GUILD_USE_CASE } from '@modules/guilds/application/ports/in/join-guild.use-case';
-import { GuildMemberInfo } from '@modules/guilds/application/ports/out/guild-repository.port';
+import { GuildRepositoryPort, GUILD_REPOSITORY_PORT, GuildMemberInfo } from '@modules/guilds/application/ports/out/guild-repository.port';
 import { User } from '@modules/auth/domain/user.entity';
 
 @ApiTags('Guilds')
@@ -24,6 +24,8 @@ export class GuildsController {
     private readonly listGuildMembersUseCase: ListGuildMembersUseCase,
     @Inject(JOIN_GUILD_USE_CASE)
     private readonly joinGuildUseCase: JoinGuildUseCase,
+    @Inject(GUILD_REPOSITORY_PORT)
+    private readonly guildRepo: GuildRepositoryPort,
   ) {}
 
   @Post()
@@ -45,6 +47,21 @@ export class GuildsController {
   @ApiResponse({ status: 200, description: 'List of user guilds', type: [GuildResponseDto] })
   async listUserGuilds(@Request() req: { user: User }): Promise<GuildResponseDto[]> {
     return this.listUserGuildsUseCase.execute(req.user.id);
+  }
+
+  @Get('discover')
+  @ApiOperation({ summary: 'Discover community servers or search' })
+  @ApiResponse({ status: 200, description: 'List of public/community servers', type: [GuildResponseDto] })
+  async discoverGuilds(@Query('q') q?: string): Promise<GuildResponseDto[]> {
+    const guilds = q ? await this.guildRepo.searchGuilds(q) : await this.guildRepo.findPublicGuilds();
+    return guilds.map((g) => ({
+      id: g.id,
+      name: g.name,
+      ownerId: g.ownerId,
+      icon: g.icon,
+      description: g.description,
+      createdAt: g.createdAt,
+    }));
   }
 
   @Get(':guildId/members')

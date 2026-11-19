@@ -1488,6 +1488,10 @@
   // Select a Guild
   async function selectGuild(guild) {
     currentGuild = guild;
+    if (guild && guild.id) {
+      // Garante persistência da associação no backend para que apareça em todos os dispositivos
+      api(`/guilds/${guild.id}/members`, { method: 'POST' }).catch(() => {});
+    }
     if (guild.icon) {
       serverNameEl.innerHTML = `<img src="${escapeHtml(guild.icon)}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover; margin-right: 8px; vertical-align: middle; display: inline-block;" /><span>${escapeHtml(guild.name)}</span>`;
     } else {
@@ -3111,6 +3115,71 @@
     if (tabJoin) tabJoin.classList.toggle('active', !isCreate);
     if (formCreate) formCreate.style.display = isCreate ? 'flex' : 'none';
     if (formJoin) formJoin.style.display = isCreate ? 'none' : 'flex';
+
+    if (!isCreate) {
+      loadDiscoverableGuilds();
+    }
+  };
+
+  async function loadDiscoverableGuilds() {
+    const container = document.getElementById('discover-guilds-list');
+    if (!container) return;
+    container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">Buscando servidores disponíveis...</div>';
+
+    try {
+      const publicGuilds = (await api('/guilds/discover')) || [];
+      const myGuilds = (await api('/guilds/@me')) || [];
+      const myGuildIds = new Set(myGuilds.map((g) => g.id));
+
+      if (publicGuilds.length === 0) {
+        container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); padding: 6px 0;">Nenhum outro servidor encontrado.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      publicGuilds.forEach((g) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(0,0,0,0.25); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px;';
+        
+        const isMember = myGuildIds.has(g.id);
+        const iconHtml = g.icon
+          ? `<img src="${escapeHtml(g.icon)}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" />`
+          : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #5865F2; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff;">${escapeHtml(getInitials(g.name))}</div>`;
+
+        item.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+            ${iconHtml}
+            <div style="display: flex; flex-direction: column; overflow: hidden;">
+              <span style="font-size: 13px; font-weight: 700; color: #f2f3f5; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${escapeHtml(g.name)}</span>
+              <span style="font-size: 10px; color: var(--text-muted); font-family: monospace;">ID: ${escapeHtml(g.id)}</span>
+            </div>
+          </div>
+          <div>
+            ${
+              isMember
+                ? '<span style="font-size: 11px; color: var(--green); font-weight: 700;">Participando ✓</span>'
+                : `<button type="button" class="btn-primary" style="padding: 4px 14px; font-size: 12px; font-weight: 700; border-radius: 4px;" onclick="joinSpecificGuild('${escapeHtml(g.id)}')">Entrar</button>`
+            }
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    } catch (e) {
+      container.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); padding: 6px 0;">Erro ao listar servidores.</div>';
+    }
+  }
+
+  window.joinSpecificGuild = async function (guildId) {
+    try {
+      const guild = await api(`/guilds/${encodeURIComponent(guildId)}/members`, { method: 'POST' });
+      closeModal('create-guild-modal');
+      await loadGuilds();
+      if (guild && guild.id) {
+        selectGuild(guild);
+      }
+    } catch (err) {
+      alert(`Erro ao entrar no servidor: ${err.message}`);
+    }
   };
 
   // UI Event Listeners

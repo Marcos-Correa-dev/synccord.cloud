@@ -40,14 +40,45 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
   }
 
   async findByName(name: string): Promise<Guild | null> {
-    const result = await this.db
+    const trimmed = decodeURIComponent(name).trim();
+    // 1. Exact match (case-insensitive)
+    let result = await this.db
       .select()
       .from(guildsTable)
-      .where(ilike(guildsTable.name, name))
+      .where(ilike(guildsTable.name, trimmed))
       .limit(1);
+
+    // 2. Partial match (case-insensitive)
+    if (result.length === 0) {
+      result = await this.db
+        .select()
+        .from(guildsTable)
+        .where(ilike(guildsTable.name, `%${trimmed}%`))
+        .limit(1);
+    }
 
     if (result.length === 0) return null;
     return this.mapToDomain(result[0]);
+  }
+
+  async findPublicGuilds(): Promise<Guild[]> {
+    const rows = await this.db
+      .select()
+      .from(guildsTable)
+      .limit(50);
+
+    return rows.map((r) => this.mapToDomain(r));
+  }
+
+  async searchGuilds(query: string): Promise<Guild[]> {
+    const trimmed = decodeURIComponent(query).trim();
+    const rows = await this.db
+      .select()
+      .from(guildsTable)
+      .where(ilike(guildsTable.name, `%${trimmed}%`))
+      .limit(20);
+
+    return rows.map((r) => this.mapToDomain(r));
   }
 
   async findUserGuilds(userId: string): Promise<Guild[]> {
