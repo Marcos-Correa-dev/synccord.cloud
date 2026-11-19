@@ -3,7 +3,7 @@ const { app, BrowserWindow, Menu, Tray, nativeImage } = require('electron');
 let mainWindow = null;
 let tray = null;
 
-const SYNCCORD_APP_URL = process.env.SYNCCORD_URL || process.env.DISCORD_URL || 'http://localhost:3000';
+const SYNCCORD_APP_URL = process.env.SYNCCORD_URL || process.env.DISCORD_URL || 'https://synccord.cloud';
 
 function createWindow() {
   mainWindow = new BrowserWindow({

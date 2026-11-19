@@ -113,9 +113,11 @@ fn main() {
         .build(&event_loop)
         .expect("Failed to build desktop window");
 
-    let synccord_url = std::env::var("SYNCCORD_URL")
-        .or_else(|_| std::env::var("DISCORD_URL"))
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let synccord_url = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("SYNCCORD_URL").ok())
+        .or_else(|| std::env::var("DISCORD_URL").ok())
+        .unwrap_or_else(|| "https://synccord.cloud".to_string());
 
     let init_script = r#"
         window.__IS_NATIVE_DESKTOP__ = true;

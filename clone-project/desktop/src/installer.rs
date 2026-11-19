@@ -35,6 +35,13 @@ fn main() {
         .unwrap_or_else(|_| "C:\\Users\\Default\\AppData\\Local".to_string());
     let target_dir = PathBuf::from(&local_app_data).join("SyncCord");
 
+    // 0. Terminate any currently running instance to unlock the executable file
+    let _ = Command::new("taskkill")
+        .args(["/F", "/IM", "synccord-desktop.exe"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+
     // 1. Create install directory
     if let Err(e) = std::fs::create_dir_all(&target_dir) {
         show_message_box(
