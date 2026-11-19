@@ -471,10 +471,29 @@
     const params = new URLSearchParams(window.location.search);
     const inviteGuild = params.get('guild') || params.get('joinGuild') || params.get('invite');
     pendingInviteChannelId = params.get('channel');
-    if (inviteGuild && token && currentUser && /^\d+$/.test(inviteGuild)) {
-      api(`/guilds/${inviteGuild}/members`, { method: 'POST' })
-        .then(() => loadGuilds())
-        .catch(() => {});
+    if (inviteGuild) {
+      if (token && currentUser) {
+        api(`/guilds/${encodeURIComponent(inviteGuild)}/members`, { method: 'POST' })
+          .then(async (joinedGuild) => {
+            await loadGuilds();
+            if (joinedGuild && joinedGuild.id) {
+              selectGuild(joinedGuild);
+            }
+            // Clean invite parameters from URL without page reload
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {}
+          })
+          .catch((err) => {
+            console.warn('[Invite] Falha ao processar convite da URL:', err);
+          });
+      } else {
+        // Salva convite pendente para processar automaticamente após login/cadastro
+        sessionStorage.setItem('pending_invite_guild', inviteGuild);
+        if (pendingInviteChannelId) {
+          sessionStorage.setItem('pending_invite_channel', pendingInviteChannelId);
+        }
+      }
     }
     const resetToken = params.get('reset') || params.get('token');
     if (resetToken) {
@@ -3409,23 +3428,25 @@
         const rawInput = document.getElementById('join-guild-input').value.trim();
         if (!rawInput) return;
 
-        let guildId = rawInput;
+        let guildTarget = rawInput;
         if (rawInput.includes('?')) {
           try {
             const urlObj = new URL(rawInput, window.location.origin);
-            guildId = urlObj.searchParams.get('guild') || urlObj.searchParams.get('joinGuild') || rawInput;
+            guildTarget = urlObj.searchParams.get('guild') || urlObj.searchParams.get('joinGuild') || urlObj.searchParams.get('invite') || rawInput;
           } catch {
-            guildId = rawInput;
+            guildTarget = rawInput;
           }
         }
 
         try {
-          const guild = await api(`/guilds/${guildId}/members`, {
+          const guild = await api(`/guilds/${encodeURIComponent(guildTarget)}/members`, {
             method: 'POST',
           });
           closeModal('create-guild-modal');
           await loadGuilds();
-          if (guild) selectGuild(guild);
+          if (guild && guild.id) {
+            selectGuild(guild);
+          }
         } catch (err) {
           alert(`Erro ao entrar no servidor: ${err.message}`);
         }
@@ -3467,7 +3488,28 @@
         showAuthModal(false);
         updateUserPanel();
         initWebSocket();
-        loadGuilds();
+
+        // Processa convite pendente automaticamente após autenticação
+        const pendingInvite = sessionStorage.getItem('pending_invite_guild') ||
+          new URLSearchParams(window.location.search).get('guild') ||
+          new URLSearchParams(window.location.search).get('joinGuild') ||
+          new URLSearchParams(window.location.search).get('invite');
+
+        if (pendingInvite) {
+          sessionStorage.removeItem('pending_invite_guild');
+          try {
+            const joined = await api(`/guilds/${encodeURIComponent(pendingInvite)}/members`, { method: 'POST' });
+            await loadGuilds();
+            if (joined && joined.id) {
+              selectGuild(joined);
+            }
+          } catch (e) {
+            console.warn('[Invite] Falha ao processar convite pendente após login:', e);
+            await loadGuilds();
+          }
+        } else {
+          await loadGuilds();
+        }
       } catch (err) {
         alert(`Erro de autenticação: ${err.message}`);
       }

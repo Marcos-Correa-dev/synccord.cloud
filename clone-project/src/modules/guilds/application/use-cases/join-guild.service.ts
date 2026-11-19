@@ -10,13 +10,16 @@ export class JoinGuildService implements JoinGuildUseCase {
     private readonly guildRepository: GuildRepositoryPort,
   ) {}
 
-  async execute(guildId: string, userId: string): Promise<Guild> {
-    const guild = await this.guildRepository.findById(guildId);
+  async execute(guildIdOrName: string, userId: string): Promise<Guild> {
+    let guild = await this.guildRepository.findById(guildIdOrName);
+    if (!guild) {
+      guild = await this.guildRepository.findByName(guildIdOrName);
+    }
     if (!guild) {
       throw new NotFoundException('Servidor não encontrado');
     }
 
-    await this.guildRepository.addMember(guildId, userId);
+    await this.guildRepository.addMember(guild.id, userId);
     return guild;
   }
 }

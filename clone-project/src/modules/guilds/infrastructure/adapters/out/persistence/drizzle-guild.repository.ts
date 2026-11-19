@@ -1,5 +1,5 @@
 ﻿import { Injectable, Inject } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ilike } from 'drizzle-orm';
 import { Guild } from '@modules/guilds/domain/entities/guild.entity';
 import { GuildRepositoryPort, GuildMemberInfo } from '@modules/guilds/application/ports/out/guild-repository.port';
 import { DRIZZLE_DB, AppDatabase } from '@infrastructure/database/database.module';
@@ -39,7 +39,19 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
     return this.mapToDomain(result[0]);
   }
 
+  async findByName(name: string): Promise<Guild | null> {
+    const result = await this.db
+      .select()
+      .from(guildsTable)
+      .where(ilike(guildsTable.name, name))
+      .limit(1);
+
+    if (result.length === 0) return null;
+    return this.mapToDomain(result[0]);
+  }
+
   async findUserGuilds(userId: string): Promise<Guild[]> {
+    // 1. Guilds where user is an accepted member
     const members = await this.db
       .select({
         guild: guildsTable,
@@ -48,19 +60,41 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
       .innerJoin(guildsTable, eq(guildMembersTable.guildId, guildsTable.id))
       .where(eq(guildMembersTable.userId, userId));
 
-    return members.map((m) => this.mapToDomain(m.guild));
+    // 2. Guilds where user is the owner (prevents missing servers if member entry wasn't recorded)
+    const owned = await this.db
+      .select()
+      .from(guildsTable)
+      .where(eq(guildsTable.ownerId, userId));
+
+    const map = new Map<string, Guild>();
+    for (const m of members) {
+      map.set(m.guild.id, this.mapToDomain(m.guild));
+    }
+    for (const g of owned) {
+      if (!map.has(g.id)) {
+        map.set(g.id, this.mapToDomain(g));
+        // Auto-heal membership table for the owner
+        this.addMember(g.id, userId, ['owner']).catch(() => {});
+      }
+    }
+
+    return Array.from(map.values());
   }
 
   async addMember(guildId: string, userId: string, roles: string[] = []): Promise<void> {
     const alreadyMember = await this.isMember(guildId, userId);
     if (alreadyMember) return;
 
-    await this.db.insert(guildMembersTable).values({
-      guildId,
-      userId,
-      roles: JSON.stringify(roles),
-      joinedAt: new Date(),
-    });
+    try {
+      await this.db.insert(guildMembersTable).values({
+        guildId,
+        userId,
+        roles: JSON.stringify(roles),
+        joinedAt: new Date(),
+      });
+    } catch {
+      // In case of concurrent race condition or existing primary key, ignore cleanly
+    }
   }
 
   async findGuildMembers(guildId: string): Promise<GuildMemberInfo[]> {

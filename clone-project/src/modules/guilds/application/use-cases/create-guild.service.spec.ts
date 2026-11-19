@@ -10,6 +10,7 @@ describe('CreateGuildService Unit Tests', () => {
     mockGuildRepo = {
       create: jest.fn().mockImplementation((guild: Guild) => Promise.resolve(guild)),
       findById: jest.fn(),
+      findByName: jest.fn(),
       findUserGuilds: jest.fn(),
       addMember: jest.fn().mockResolvedValue(undefined),
       findGuildMembers: jest.fn().mockResolvedValue([]),
