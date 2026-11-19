@@ -309,6 +309,336 @@
   const peerConnections = new Map();
   // Remote audio elements for direct audio output: userId -> HTMLAudioElement
   const remoteAudioElements = new Map();
+  // Remote audio Web Audio API gain nodes for 0% to 200% dynamic volume boosting: userId -> { context, gainNode, sourceNode, destination, stream }
+  const remoteAudioGains = new Map();
+  // Persistent user volumes (0-200, default 100): userId -> number
+  const userVolumes = new Map();
+  // Stored previous non-zero volume for local unmute toggle: userId -> number
+  const userPreviousVolumes = new Map();
+  // Currently active voice user context menu element
+  let activeVoiceUserContextMenu = null;
+
+  function loadUserVolumes() {
+    try {
+      const saved = localStorage.getItem('synccord_user_volumes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        Object.entries(parsed).forEach(([uid, vol]) => {
+          const num = Number(vol);
+          if (!isNaN(num) && num >= 0 && num <= 200) {
+            userVolumes.set(uid, num);
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
+  function saveUserVolumes() {
+    try {
+      const obj = {};
+      userVolumes.forEach((v, k) => {
+        obj[k] = v;
+      });
+      localStorage.setItem('synccord_user_volumes', JSON.stringify(obj));
+    } catch (e) {}
+  }
+  loadUserVolumes();
+
+  function getUserVolume(userId) {
+    if (!userId) return 100;
+    if (userVolumes.has(userId)) {
+      return userVolumes.get(userId);
+    }
+    return 100;
+  }
+
+  function setUserVolume(userId, volumePercent) {
+    if (!userId) return;
+    volumePercent = Math.max(0, Math.min(200, Math.round(volumePercent)));
+    userVolumes.set(userId, volumePercent);
+    saveUserVolumes();
+
+    // 1. Update Web Audio API GainNode in real-time
+    const gainEntry = remoteAudioGains.get(userId);
+    if (gainEntry && gainEntry.gainNode) {
+      try {
+        const targetGain = volumePercent / 100; // 0.0 to 2.0
+        if (gainEntry.context.state === 'suspended') {
+          gainEntry.context.resume().catch(() => {});
+        }
+        gainEntry.gainNode.gain.setValueAtTime(targetGain, gainEntry.context.currentTime);
+      } catch (err) {
+        console.warn(`[WebAudio] Error setting gain for ${userId}:`, err);
+      }
+    }
+
+    // 2. Update direct audio playback element
+    const audioEl = remoteAudioElements.get(userId);
+    if (audioEl) {
+      if (volumePercent === 0) {
+        audioEl.muted = true;
+      } else {
+        audioEl.muted = isDeafened;
+        if (!gainEntry) {
+          audioEl.volume = Math.min(1.0, volumePercent / 100);
+        }
+      }
+    }
+
+    // 3. Update volume badge on participant card in central stage and sidebar
+    updateUserVolumeBadgeOnCard(userId, volumePercent);
+  }
+
+  function updateUserVolumeBadgeOnCard(userId, volume) {
+    const card = document.getElementById(`participant-card-${userId}`);
+    if (card) {
+      let badge = card.querySelector('.user-volume-badge');
+      if (volume === 100) {
+        if (badge) badge.remove();
+      } else {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'user-volume-badge';
+          const nameplate = card.querySelector('.card-nameplate');
+          if (nameplate) nameplate.appendChild(badge);
+        }
+        if (badge) {
+          badge.className = `user-volume-badge ${volume === 0 ? 'muted' : (volume > 100 ? 'boosted' : '')}`;
+          badge.innerHTML = `${volume === 0 ? '🔇' : '🔊'} ${volume}%`;
+          badge.title = `Volume ajustado para ${volume}%`;
+        }
+      }
+    }
+
+    const row = document.getElementById(`voice-user-${userId}`);
+    if (row) {
+      let rowBadge = row.querySelector('.user-volume-badge');
+      if (volume === 100) {
+        if (rowBadge) rowBadge.remove();
+      } else {
+        if (!rowBadge) {
+          rowBadge = document.createElement('span');
+          rowBadge.className = 'user-volume-badge';
+          const usernameEl = row.querySelector('.voice-username');
+          if (usernameEl) usernameEl.insertAdjacentElement('afterend', rowBadge);
+          else row.appendChild(rowBadge);
+        }
+        if (rowBadge) {
+          rowBadge.className = `user-volume-badge ${volume === 0 ? 'muted' : (volume > 100 ? 'boosted' : '')}`;
+          rowBadge.innerHTML = `${volume === 0 ? '🔇' : '🔊'} ${volume}%`;
+          rowBadge.title = `Volume ajustado para ${volume}%`;
+        }
+      }
+    }
+  }
+
+  function closeVoiceUserContextMenu() {
+    if (activeVoiceUserContextMenu) {
+      activeVoiceUserContextMenu.remove();
+      activeVoiceUserContextMenu = null;
+    }
+    document.removeEventListener('click', handleOutsideContextMenuClick);
+    document.removeEventListener('keydown', handleContextMenuKeyDown);
+  }
+
+  function handleOutsideContextMenuClick(e) {
+    if (activeVoiceUserContextMenu && !activeVoiceUserContextMenu.contains(e.target)) {
+      closeVoiceUserContextMenu();
+    }
+  }
+
+  function handleContextMenuKeyDown(e) {
+    if (e.key === 'Escape') {
+      closeVoiceUserContextMenu();
+    }
+  }
+
+  function openVoiceUserContextMenu(e, targetUserId, targetUserName, targetAvatar, targetDiscriminator) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    closeVoiceUserContextMenu();
+
+    if (!targetUserId) return;
+
+    const isMe = currentUser && targetUserId === currentUser.id;
+    let currentVol = getUserVolume(targetUserId);
+    const displayName = targetUserName || (isMe ? currentUser.username : 'Membro');
+    const displayAvatar = targetAvatar || (isMe ? currentUser.avatar : null);
+    const displayDisc = targetDiscriminator || (isMe ? currentUser.discriminator : '0001');
+    const initials = (displayName || '??').substring(0, 2).toUpperCase();
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.id = 'voice-user-context-menu';
+
+    function getSliderBackground(val) {
+      const percent = (val / 200) * 100;
+      const fillColor = val === 0 ? '#da373c' : (val > 100 ? '#23a55a' : '#5865f2');
+      return `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${percent}%, #4e5058 ${percent}%, #4e5058 100%)`;
+    }
+
+    menu.innerHTML = `
+      <div class="context-menu-header">
+        <div class="context-menu-avatar">
+          ${displayAvatar ? `<img src="${escapeHtml(displayAvatar)}" alt="${escapeHtml(displayName)}" />` : initials}
+        </div>
+        <div class="context-menu-user-info">
+          <span class="context-menu-username">${escapeHtml(displayName)}</span>
+          <span class="context-menu-tag">${isMe ? '(Você)' : `#${escapeHtml(displayDisc)}`}</span>
+        </div>
+      </div>
+
+      <div class="context-volume-section">
+        <div class="context-volume-title-row">
+          <span class="context-volume-label">VOLUME DE USUÁRIO</span>
+          <span class="context-volume-value ${currentVol === 0 ? 'muted' : (currentVol > 100 ? 'boosted' : '')}" id="context-user-volume-val">${currentVol}%</span>
+        </div>
+        
+        <div class="context-volume-slider-wrapper">
+          <input 
+            type="range" 
+            min="0" 
+            max="200" 
+            step="1" 
+            value="${currentVol}" 
+            class="context-volume-slider" 
+            id="context-user-volume-slider"
+            style="background: ${getSliderBackground(currentVol)};"
+          />
+        </div>
+
+        <div class="context-volume-presets">
+          <button type="button" class="context-preset-btn" data-preset="0">0% (Mudo)</button>
+          <button type="button" class="context-preset-btn" data-preset="100">100% (Padrão)</button>
+          <button type="button" class="context-preset-btn" data-preset="200">200% (Máx)</button>
+        </div>
+      </div>
+
+      <div class="context-menu-divider"></div>
+
+      <div class="context-menu-item" id="context-toggle-mute-user">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span id="context-mute-icon">${currentVol === 0 ? '🔊' : '🔇'}</span>
+          <span id="context-mute-text">${currentVol === 0 ? 'Desativar Mudo' : 'Silenciar Usuário'}</span>
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);" id="context-mute-badge">${currentVol === 0 ? 'MUDO' : ''}</span>
+      </div>
+
+      <div class="context-menu-divider"></div>
+
+      <div class="context-menu-item" id="context-copy-username">
+        <span>Copiar Nome</span>
+        <span style="font-size:11px;color:var(--text-muted);">@</span>
+      </div>
+      <div class="context-menu-item" id="context-copy-id">
+        <span>Copiar ID</span>
+        <span style="font-size:11px;color:var(--text-muted);">#</span>
+      </div>
+    `;
+
+    document.body.appendChild(menu);
+    activeVoiceUserContextMenu = menu;
+
+    const sliderEl = menu.querySelector('#context-user-volume-slider');
+    const volumeValEl = menu.querySelector('#context-user-volume-val');
+    const muteBtnEl = menu.querySelector('#context-toggle-mute-user');
+    const muteIconEl = menu.querySelector('#context-mute-icon');
+    const muteTextEl = menu.querySelector('#context-mute-text');
+    const muteBadgeEl = menu.querySelector('#context-mute-badge');
+
+    function syncUI(vol) {
+      sliderEl.value = vol;
+      sliderEl.style.background = getSliderBackground(vol);
+      volumeValEl.textContent = `${vol}%`;
+      volumeValEl.className = `context-volume-value ${vol === 0 ? 'muted' : (vol > 100 ? 'boosted' : '')}`;
+
+      if (vol === 0) {
+        muteIconEl.textContent = '🔊';
+        muteTextEl.textContent = 'Desativar Mudo';
+        muteBadgeEl.textContent = 'MUDO';
+      } else {
+        muteIconEl.textContent = '🔇';
+        muteTextEl.textContent = 'Silenciar Usuário';
+        muteBadgeEl.textContent = '';
+      }
+    }
+
+    // Dynamic linear slider event listener
+    sliderEl.addEventListener('input', (event) => {
+      const val = parseInt(event.target.value, 10);
+      syncUI(val);
+      setUserVolume(targetUserId, val);
+    });
+
+    // Preset buttons
+    menu.querySelectorAll('.context-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const presetVal = parseInt(btn.getAttribute('data-preset'), 10);
+        syncUI(presetVal);
+        setUserVolume(targetUserId, presetVal);
+      });
+    });
+
+    // Local Mute Toggle
+    muteBtnEl.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const current = getUserVolume(targetUserId);
+      if (current > 0) {
+        userPreviousVolumes.set(targetUserId, current);
+        syncUI(0);
+        setUserVolume(targetUserId, 0);
+      } else {
+        const prev = userPreviousVolumes.get(targetUserId) || 100;
+        syncUI(prev);
+        setUserVolume(targetUserId, prev);
+      }
+    });
+
+    // Copy Name
+    menu.querySelector('#context-copy-username').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      navigator.clipboard?.writeText(displayName);
+      closeVoiceUserContextMenu();
+    });
+
+    // Copy ID
+    menu.querySelector('#context-copy-id').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      navigator.clipboard?.writeText(targetUserId);
+      closeVoiceUserContextMenu();
+    });
+
+    // Precise positioning with viewport collision boundary detection
+    const menuWidth = 260;
+    const menuHeight = 240;
+    let posX = e.clientX || 100;
+    let posY = e.clientY || 100;
+
+    if (posX + menuWidth > window.innerWidth - 10) {
+      posX = window.innerWidth - menuWidth - 10;
+    }
+    if (posY + menuHeight > window.innerHeight - 10) {
+      posY = window.innerHeight - menuHeight - 10;
+    }
+    if (posX < 10) posX = 10;
+    if (posY < 10) posY = 10;
+
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+
+    setTimeout(() => {
+      document.addEventListener('click', handleOutsideContextMenuClick);
+      document.addEventListener('keydown', handleContextMenuKeyDown);
+    }, 0);
+  }
+
+  window.openVoiceUserContextMenu = openVoiceUserContextMenu;
+  window.closeVoiceUserContextMenu = closeVoiceUserContextMenu;
+  window.setUserVolume = setUserVolume;
+  window.getUserVolume = getUserVolume;
+
   // Queued ICE candidates awaiting remote description: userId -> RTCIceCandidate[]
   const iceCandidateQueues = new Map();
   // Renegotiation / offer locking per peer to prevent collisions
@@ -1647,9 +1977,17 @@
         const avatar = isMe ? currentUser.avatar : u.avatar;
         const initials = (username || '??').substring(0, 2).toUpperCase();
 
+        const userVol = getUserVolume(u.id);
+        const volumeBadge = userVol !== 100 ? `<span class="user-volume-badge ${userVol === 0 ? 'muted' : (userVol > 100 ? 'boosted' : '')}" title="Volume: ${userVol}%">${userVol === 0 ? '🔇' : '🔊'} ${userVol}%</span>` : '';
+
         const row = document.createElement('div');
         row.className = 'voice-user-item';
         row.id = `voice-user-${u.id}`;
+        row.setAttribute('data-user-id', u.id);
+        row.setAttribute('data-user-name', username);
+        row.setAttribute('data-user-avatar', avatar || '');
+        row.setAttribute('data-user-discriminator', u.discriminator || '0001');
+
         row.innerHTML = `
           <div class="voice-avatar-wrapper">
             <div class="voice-avatar ${s.speaking ? 'speaking' : ''}" id="voice-avatar-${u.id}">
@@ -1657,9 +1995,15 @@
             </div>
           </div>
           <span class="voice-username">${escapeHtml(username)}</span>
+          ${volumeBadge}
           ${s.streaming ? '<span class="live-badge" title="Transmitindo Tela">AO VIVO</span>' : ''}
           ${s.selfMute ? '<span class="voice-user-badge" title="Microfone Desativado">🔇</span>' : ''}
         `;
+
+        row.addEventListener('contextmenu', (e) => {
+          openVoiceUserContextMenu(e, u.id, username, avatar, u.discriminator);
+        });
+
         container.appendChild(row);
       });
     });
@@ -1709,9 +2053,16 @@
           const avatar = isMe ? currentUser.avatar : u.avatar;
           const initials = (username || '??').substring(0, 2).toUpperCase();
 
+          const userVol = getUserVolume(u.id);
+          const volumeBadge = userVol !== 100 ? `<span class="user-volume-badge ${userVol === 0 ? 'muted' : (userVol > 100 ? 'boosted' : '')}" title="Volume: ${userVol}%">${userVol === 0 ? '🔇' : '🔊'} ${userVol}%</span>` : '';
+
           const card = document.createElement('div');
           card.className = `voice-participant-card ${s.speaking ? 'speaking' : ''}`;
           card.id = `participant-card-${u.id}`;
+          card.setAttribute('data-user-id', u.id);
+          card.setAttribute('data-user-name', username);
+          card.setAttribute('data-user-avatar', avatar || '');
+          card.setAttribute('data-user-discriminator', u.discriminator || '0001');
 
           card.innerHTML = `
             <div class="card-reaction-overlay" id="reaction-overlay-${u.id}"></div>
@@ -1722,10 +2073,15 @@
             </div>
             <div class="card-nameplate">
               <span>${escapeHtml(username)}</span>
+              ${volumeBadge}
               ${s.streaming ? '<span class="live-badge">AO VIVO</span>' : ''}
               ${s.selfMute ? '<span>🔇</span>' : ''}
             </div>
           `;
+
+          card.addEventListener('contextmenu', (e) => {
+            openVoiceUserContextMenu(e, u.id, username, avatar, u.discriminator);
+          });
 
           voiceParticipantsGridEl.appendChild(card);
         });
@@ -1783,6 +2139,13 @@
         card.id = `video-grid-item-${sanitizedKey}`;
         card.setAttribute('data-stream-key', streamKey);
         card.setAttribute('data-user-id', ownerUserId);
+        card.setAttribute('data-user-name', displayUsername);
+        card.setAttribute('data-user-avatar', avatar || '');
+        card.setAttribute('data-user-discriminator', userState?.user?.discriminator || '0001');
+
+        card.addEventListener('contextmenu', (e) => {
+          openVoiceUserContextMenu(e, ownerUserId, displayUsername, avatar, userState?.user?.discriminator);
+        });
 
         videoEl = document.createElement('video');
         videoEl.className = 'voice-video-element';
@@ -2494,7 +2857,7 @@
     }
   }
 
-  // Play remote audio through dedicated HTMLAudioElement
+  // Play remote audio through dedicated HTMLAudioElement with Web Audio API 0-200% Gain
   function playRemoteAudio(userId, stream) {
     let audioEl = remoteAudioElements.get(userId);
     if (!audioEl) {
@@ -2506,8 +2869,35 @@
       document.body.appendChild(audioEl);
       remoteAudioElements.set(userId, audioEl);
     }
-    audioEl.srcObject = stream;
-    audioEl.muted = isDeafened;
+
+    // Connect Web Audio API GainNode to allow volume amplification up to 200%
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      let gainEntry = remoteAudioGains.get(userId);
+
+      if (!gainEntry || gainEntry.context.state === 'closed') {
+        const ctx = new AudioCtx();
+        const source = ctx.createMediaStreamSource(stream);
+        const gainNode = ctx.createGain();
+        const dest = ctx.createMediaStreamDestination();
+
+        source.connect(gainNode);
+        gainNode.connect(dest);
+
+        const currentVol = getUserVolume(userId);
+        gainNode.gain.setValueAtTime(currentVol / 100, ctx.currentTime);
+
+        audioEl.srcObject = dest.stream;
+        remoteAudioGains.set(userId, { context: ctx, gainNode, sourceNode: source, destination: dest, stream });
+      } else {
+        audioEl.srcObject = gainEntry.destination.stream;
+      }
+    } catch (err) {
+      console.warn(`[WebAudio] Fallback to direct stream for ${userId}:`, err);
+      audioEl.srcObject = stream;
+    }
+
+    audioEl.muted = isDeafened || (getUserVolume(userId) === 0);
 
     if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof audioEl.setSinkId === 'function') {
       audioEl.setSinkId(selectedAudioOutputId).catch(() => {});
@@ -2518,6 +2908,10 @@
       playPromise.catch((err) => {
         console.warn(`Autoplay audio for user ${userId} waiting for interaction:`, err);
         const retryAudioPlay = () => {
+          const entry = remoteAudioGains.get(userId);
+          if (entry && entry.context.state === 'suspended') {
+            entry.context.resume().catch(() => {});
+          }
           audioEl.play().catch(() => {});
           document.removeEventListener('click', retryAudioPlay);
         };
@@ -2725,6 +3119,16 @@
       peerConnections.delete(userId);
     }
 
+    const gainEntry = remoteAudioGains.get(userId);
+    if (gainEntry) {
+      try {
+        gainEntry.sourceNode.disconnect();
+        gainEntry.gainNode.disconnect();
+        gainEntry.context.close();
+      } catch (e) {}
+      remoteAudioGains.delete(userId);
+    }
+
     const audioEl = remoteAudioElements.get(userId);
     if (audioEl) {
       try {
@@ -2747,6 +3151,15 @@
       } catch (e) {}
     });
     peerConnections.clear();
+
+    remoteAudioGains.forEach((gainEntry) => {
+      try {
+        gainEntry.sourceNode.disconnect();
+        gainEntry.gainNode.disconnect();
+        gainEntry.context.close();
+      } catch (e) {}
+    });
+    remoteAudioGains.clear();
 
     remoteAudioElements.forEach((audioEl) => {
       try {
@@ -3046,8 +3459,8 @@
     isDeafened = !isDeafened;
     updateAudioButtons();
     // Update all remote audio playback elements immediately
-    remoteAudioElements.forEach((audioEl) => {
-      audioEl.muted = isDeafened;
+    remoteAudioElements.forEach((audioEl, uId) => {
+      audioEl.muted = isDeafened || (getUserVolume(uId) === 0);
     });
     if (connectedVoiceChannel && socket && currentUser) {
       socket.emit('voice:join', {
@@ -3312,6 +3725,23 @@
     if (navigator.mediaDevices?.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', () => {
         refreshAudioDevices();
+      });
+    }
+
+    // Delegated contextmenu on Voice Call Stage for user volume control (0-200% dynamic slider)
+    if (voiceCallStageEl) {
+      voiceCallStageEl.addEventListener('contextmenu', (e) => {
+        const card = e.target.closest('.voice-participant-card') || e.target.closest('.video-grid-item');
+        if (card) {
+          e.preventDefault();
+          const uid = card.getAttribute('data-user-id');
+          const uname = card.getAttribute('data-user-name');
+          const uav = card.getAttribute('data-user-avatar');
+          const udisc = card.getAttribute('data-user-discriminator');
+          if (uid) {
+            openVoiceUserContextMenu(e, uid, uname, uav, udisc);
+          }
+        }
       });
     }
 
