@@ -934,8 +934,11 @@
             if (data.avatar !== undefined) s.user.avatar = data.avatar;
           }
         });
-        if (activeStreams.has(data.userId)) {
-          activeStreams.get(data.userId).username = data.username;
+        if (activeStreams.has(`${data.userId}:screen`)) {
+          activeStreams.get(`${data.userId}:screen`).username = data.username;
+        }
+        if (activeStreams.has(`${data.userId}:cam`)) {
+          activeStreams.get(`${data.userId}:cam`).username = `${data.username} (Câmera)`;
         }
         updateUserPanel();
         renderVoiceUsers();
@@ -946,10 +949,27 @@
     });
   }
 
+  function removeAllUserStreams(userId) {
+    let changed = false;
+    for (const key of Array.from(activeStreams.keys())) {
+      if (key === userId || key.startsWith(`${userId}:`) || key.startsWith(`${userId}_`)) {
+        const item = activeStreams.get(key);
+        if (item?.stream && !item.isLocal) {
+          try {
+            item.stream.getTracks().forEach((t) => t.stop());
+          } catch (e) {}
+        }
+        activeStreams.delete(key);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   function handleVoiceStateUpdate(state) {
     if (!state.channelId) {
       voiceStates = voiceStates.filter((s) => s.user.id !== state.userId);
-      activeStreams.delete(state.userId);
+      removeAllUserStreams(state.userId);
       closePeerConnection(state.userId);
       renderVideoGrid();
       if (currentUser && state.userId === currentUser.id && connectedVoiceChannel) {
@@ -979,27 +999,54 @@
     renderVoiceCallStage();
   }
 
-  // Handle Multi-stream updates for simultaneous screensharing (keyed by `${userId}:screen`)
+  // Handle Multi-stream updates for simultaneous screensharing (keyed by `${userId}:screen` and `${userId}:cam`)
   function handleVoiceStreamUpdate(data) {
     const state = voiceStates.find((s) => s.user.id === data.userId);
     if (state) {
-      state.streaming = data.streaming;
-      state.video = data.video;
+      if (typeof data.streaming === 'boolean') state.streaming = data.streaming;
+      if (typeof data.video === 'boolean') state.video = data.video;
+      if (data.screenTrackId !== undefined) state.screenTrackId = data.screenTrackId;
+      if (data.cameraTrackId !== undefined) state.cameraTrackId = data.cameraTrackId;
     }
 
-    const streamKey = `${data.userId}:screen`;
-    if (data.streaming) {
-      const existing = activeStreams.get(streamKey);
-      const isMe = currentUser && data.userId === currentUser.id;
-      activeStreams.set(streamKey, {
-        stream: isMe ? screenStream : (existing?.stream || null),
-        username: data.username || state?.user?.username || 'Membro',
-        isLocal: isMe,
-        type: 'screen',
-        userId: data.userId,
-      });
-    } else {
-      activeStreams.delete(streamKey);
+    const screenKey = `${data.userId}:screen`;
+    const camKey = `${data.userId}:cam`;
+
+    if (!data.streaming) {
+      const item = activeStreams.get(screenKey);
+      if (item && !item.isLocal && item.stream) {
+        try { item.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      }
+      activeStreams.delete(screenKey);
+    }
+    if (!data.video) {
+      const item = activeStreams.get(camKey);
+      if (item && !item.isLocal && item.stream) {
+        try { item.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      }
+      activeStreams.delete(camKey);
+    }
+
+    const isMe = currentUser && data.userId === currentUser.id;
+    if (isMe) {
+      if (data.streaming && screenStream) {
+        activeStreams.set(screenKey, {
+          stream: screenStream,
+          username: currentUser.username,
+          isLocal: true,
+          type: 'screen',
+          userId: currentUser.id,
+        });
+      }
+      if (data.video && cameraStream) {
+        activeStreams.set(camKey, {
+          stream: cameraStream,
+          username: `${currentUser.username} (Câmera)`,
+          isLocal: true,
+          type: 'camera',
+          userId: currentUser.id,
+        });
+      }
     }
 
     renderVoiceUsers();
@@ -2017,6 +2064,7 @@
 
     if (!isInVoice) {
       voiceCallStageEl.style.display = 'none';
+      voiceCallStageEl.classList.remove('has-stream');
       if (chatMessagesEl) chatMessagesEl.style.display = 'flex';
       if (chatInputWrapperEl) chatInputWrapperEl.style.display = 'block';
       return;
@@ -2036,13 +2084,16 @@
       if (membersSidebarEl) membersSidebarEl.style.display = 'flex';
     }
 
+    const hasAnyActiveStream = activeStreams.size > 0 || voiceStates.some((s) => s.channelId === connectedVoiceChannel.id && (s.streaming || s.video));
+    voiceCallStageEl.classList.toggle('has-stream', hasAnyActiveStream);
+
     if (voiceParticipantsGridEl) {
-      if (activeStreams.size > 0) {
-        // Bug 3 Fix: When screen/video stream is active, hide participant card squares
+      if (hasAnyActiveStream) {
+        // When screen or camera stream is active, COMPLETELY HIDE the participant card squares in the middle screen!
         voiceParticipantsGridEl.style.display = 'none';
         voiceParticipantsGridEl.innerHTML = '';
       } else {
-        voiceParticipantsGridEl.style.display = 'grid';
+        voiceParticipantsGridEl.style.display = 'flex';
         voiceParticipantsGridEl.innerHTML = '';
         const participants = voiceStates.filter((s) => s.channelId === connectedVoiceChannel.id);
 
@@ -2099,16 +2150,23 @@
     if (activeStreams.size === 0) {
       voiceVideoGridEl.style.display = 'none';
       voiceVideoGridEl.innerHTML = '';
+      voiceVideoGridEl.classList.remove('single-stream');
       return;
     }
 
     voiceVideoGridEl.style.display = 'grid';
     if (activeStreams.size === 1) {
+      voiceVideoGridEl.classList.add('single-stream');
       voiceVideoGridEl.style.gridTemplateColumns = '1fr';
+      voiceVideoGridEl.style.gridTemplateRows = '1fr';
     } else if (activeStreams.size === 2) {
-      voiceVideoGridEl.style.gridTemplateColumns = '1fr 1fr';
+      voiceVideoGridEl.classList.remove('single-stream');
+      voiceVideoGridEl.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+      voiceVideoGridEl.style.gridTemplateRows = '1fr';
     } else {
-      voiceVideoGridEl.style.gridTemplateColumns = 'repeat(auto-fit, minmax(360px, 1fr))';
+      voiceVideoGridEl.classList.remove('single-stream');
+      voiceVideoGridEl.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+      voiceVideoGridEl.style.gridTemplateRows = 'repeat(2, minmax(0, 1fr))';
     }
 
     // Remove obsolete cards that are no longer in activeStreams
@@ -2116,11 +2174,19 @@
     currentCardElements.forEach((cardEl) => {
       const domKey = cardEl.getAttribute('data-stream-key');
       if (domKey && !activeStreams.has(domKey)) {
+        const vid = cardEl.querySelector('video');
+        if (vid) {
+          try {
+            vid.pause();
+            vid.srcObject = null;
+          } catch (e) {}
+        }
         cardEl.remove();
       }
     });
 
     activeStreams.forEach((item, streamKey) => {
+      if (!item || !item.stream) return; // Never render cards for null or missing streams
       const sanitizedKey = String(streamKey).replace(/[^a-zA-Z0-9_-]/g, '_');
       const ownerUserId = item.userId || (String(streamKey).includes(':') ? String(streamKey).split(':')[0] : String(streamKey));
       const userState = voiceStates.find((s) => s.user && s.user.id === ownerUserId);
@@ -2152,8 +2218,7 @@
         videoEl.id = `stream-player-${sanitizedKey}`;
         videoEl.autoplay = true;
         videoEl.playsInline = true;
-        // Local screen is muted to avoid loopback
-        videoEl.muted = true;
+        videoEl.muted = true; // Audio is handled via WebAudio/playRemoteAudio
 
         const isCam = item.type === 'camera';
         const bar = document.createElement('div');
@@ -2178,7 +2243,6 @@
           if (videoEl.requestFullscreen) videoEl.requestFullscreen();
         };
 
-        // Bug 3 Fix: Picture-in-Picture badge in bottom-left corner of the stream card
         const pipBadge = document.createElement('div');
         pipBadge.className = 'stream-pip-badge';
         pipBadge.id = `stream-pip-${sanitizedKey}`;
@@ -2203,11 +2267,21 @@
         if (pipNameEl) pipNameEl.textContent = displayUsername;
       }
 
-      if (videoEl && item.stream && videoEl.srcObject !== item.stream) {
-        videoEl.srcObject = item.stream;
-        videoEl.play().catch((err) => {
-          console.warn('Video playback autoplay warning:', err);
-        });
+      if (videoEl && item.stream) {
+        if (videoEl.srcObject !== item.stream) {
+          videoEl.srcObject = item.stream;
+        }
+        const playPromise = videoEl.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn('[Video] Playback waiting for interaction:', err);
+            const tryPlay = () => {
+              videoEl.play().catch(() => {});
+              document.removeEventListener('click', tryPlay);
+            };
+            document.addEventListener('click', tryPlay, { once: true });
+          });
+        }
       }
     });
   }
@@ -2483,7 +2557,7 @@
       return;
     }
 
-    // Bug 1: Concurrency limit - max 4 simultaneous streams
+    // Concurrency limit - max 4 simultaneous streams
     if (activeStreams.size >= MAX_CONCURRENT_STREAMS && !activeStreams.has(`${currentUser.id}:screen`)) {
       alert('Limite máximo de 4 transmissões simultâneas atingido.');
       return;
@@ -2496,9 +2570,26 @@
       }
 
       screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always', displaySurface: 'monitor' },
-        audio: true,
+        video: {
+          cursor: 'always',
+          displaySurface: 'monitor',
+          frameRate: { ideal: 60, max: 60 },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+        },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 2,
+          sampleRate: 48000,
+        },
       });
+
+      const videoTrack = screenStream.getVideoTracks()[0];
+      if (videoTrack && 'contentHint' in videoTrack) {
+        videoTrack.contentHint = 'motion';
+      }
 
       // Add local screen to multi-stream activeStreams map with composite key
       activeStreams.set(`${currentUser.id}:screen`, {
@@ -2511,7 +2602,7 @@
 
       renderVideoGrid();
 
-      // Bug 2: If screen audio was selected, seamlessly mix mic + screen audio dynamically
+      // If screen audio was selected, seamlessly mix mic + screen audio dynamically
       const screenAudioTracks = screenStream.getAudioTracks();
       if (screenAudioTracks.length > 0) {
         screenAudioTracks[0].onended = () => {
@@ -2520,9 +2611,11 @@
       }
       updateOutgoingAudioOnAllPeers();
 
-      screenStream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-      };
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenShare();
+        };
+      }
 
       if (socket && currentUser) {
         socket.emit('voice:stream_update', {
@@ -2531,6 +2624,8 @@
           username: currentUser.username,
           streaming: true,
           video: !!cameraStream,
+          screenTrackId: videoTrack ? videoTrack.id : null,
+          cameraTrackId: cameraStream ? cameraStream.getVideoTracks()[0]?.id : null,
         });
 
         // Broadcast WebRTC screen video tracks to all peers in this call
@@ -2538,7 +2633,10 @@
       }
 
       const myState = voiceStates.find((s) => s.user.id === currentUser.id);
-      if (myState) myState.streaming = true;
+      if (myState) {
+        myState.streaming = true;
+        myState.screenTrackId = videoTrack ? videoTrack.id : null;
+      }
 
       renderVoiceUsers();
       renderVoiceCallStage();
@@ -2577,7 +2675,6 @@
       screenStream = null;
     }
 
-    // Bug 2: Revert outgoing audio to raw mic cleanly
     if (mixedAudioContext) {
       mixedAudioContext.close().catch(() => {});
       mixedAudioContext = null;
@@ -2589,6 +2686,7 @@
       activeStreams.delete(`${currentUser.id}:screen`);
     }
     renderVideoGrid();
+    renderVoiceCallStage();
 
     if (socket && currentUser && connectedVoiceChannel) {
       socket.emit('voice:stream_update', {
@@ -2597,12 +2695,17 @@
         username: currentUser.username,
         streaming: false,
         video: !!cameraStream,
+        screenTrackId: null,
+        cameraTrackId: cameraStream ? cameraStream.getVideoTracks()[0]?.id : null,
       });
     }
 
     if (currentUser) {
       const myState = voiceStates.find((s) => s.user.id === currentUser.id);
-      if (myState) myState.streaming = false;
+      if (myState) {
+        myState.streaming = false;
+        myState.screenTrackId = null;
+      }
       renderVoiceUsers();
       renderVoiceCallStage();
     }
@@ -2633,7 +2736,6 @@
       return;
     }
 
-    // Bug 1: Concurrency limit - max 4 simultaneous streams
     if (activeStreams.size >= MAX_CONCURRENT_STREAMS && !activeStreams.has(`${currentUser.id}:cam`)) {
       alert('Limite máximo de 4 transmissões simultâneas atingido.');
       return;
@@ -2659,9 +2761,12 @@
       });
       renderVideoGrid();
 
-      cameraStream.getVideoTracks()[0].onended = () => {
-        stopCamera();
-      };
+      const camVideoTrack = cameraStream.getVideoTracks()[0];
+      if (camVideoTrack) {
+        camVideoTrack.onended = () => {
+          stopCamera();
+        };
+      }
 
       if (socket && currentUser) {
         socket.emit('voice:stream_update', {
@@ -2670,13 +2775,18 @@
           username: currentUser.username,
           streaming: !!screenStream,
           video: true,
+          screenTrackId: screenStream ? screenStream.getVideoTracks()[0]?.id : null,
+          cameraTrackId: camVideoTrack ? camVideoTrack.id : null,
         });
 
         broadcastCameraStreamToPeers();
       }
 
       const myState = voiceStates.find((s) => s.user.id === currentUser.id);
-      if (myState) myState.video = true;
+      if (myState) {
+        myState.video = true;
+        myState.cameraTrackId = camVideoTrack ? camVideoTrack.id : null;
+      }
 
       renderVoiceUsers();
       renderVoiceCallStage();
@@ -2718,6 +2828,7 @@
       activeStreams.delete(`${currentUser.id}:cam`);
     }
     renderVideoGrid();
+    renderVoiceCallStage();
 
     if (socket && currentUser && connectedVoiceChannel) {
       socket.emit('voice:stream_update', {
@@ -2726,12 +2837,17 @@
         username: currentUser.username,
         streaming: !!screenStream,
         video: false,
+        screenTrackId: screenStream ? screenStream.getVideoTracks()[0]?.id : null,
+        cameraTrackId: null,
       });
     }
 
     if (currentUser) {
       const myState = voiceStates.find((s) => s.user.id === currentUser.id);
-      if (myState) myState.video = false;
+      if (myState) {
+        myState.video = false;
+        myState.cameraTrackId = null;
+      }
       renderVoiceUsers();
       renderVoiceCallStage();
     }
@@ -2830,30 +2946,67 @@
 
     // 2. Screen Share Video Track (Video ONLY, audio is mixed into outgoing audio track)
     if (screenStream) {
-      screenStream.getVideoTracks().forEach((track) => {
-        const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
-        if (!alreadyAdded) {
-          try {
-            pc.addTrack(track, screenStream);
-          } catch (e) {
-            console.warn('Error adding screen video track to peer connection:', e);
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      if (screenVideoTrack) {
+        let screenSender = senders.find((s) => s.track && s.track.id === screenVideoTrack.id);
+        if (!screenSender) {
+          // Check if there is an idle or ended video sender we can reuse
+          const idleVideoSender = senders.find(
+            (s) => s.track && s.track.kind === 'video' && s.track.readyState === 'ended',
+          );
+          if (idleVideoSender) {
+            idleVideoSender.replaceTrack(screenVideoTrack).catch(() => {});
+            screenSender = idleVideoSender;
+          } else {
+            try {
+              screenSender = pc.addTrack(screenVideoTrack, screenStream);
+            } catch (e) {
+              console.warn('Error adding screen video track to peer connection:', e);
+            }
           }
         }
-      });
+        // Apply optimal 60fps & 4Mbps gaming bitrate
+        if (screenSender && typeof screenSender.getParameters === 'function') {
+          try {
+            const params = screenSender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 4000000; // 4 Mbps high definition
+            params.encodings[0].maxFramerate = 60;
+            if ('degradationPreference' in params) {
+              params.degradationPreference = 'maintain-framerate';
+            }
+            screenSender.setParameters(params).catch(() => {});
+          } catch (e) {}
+        }
+      }
     }
 
     // 3. Camera Video Track
     if (cameraStream) {
-      cameraStream.getVideoTracks().forEach((track) => {
-        const alreadyAdded = senders.some((s) => s.track && s.track.id === track.id);
-        if (!alreadyAdded) {
+      const camVideoTrack = cameraStream.getVideoTracks()[0];
+      if (camVideoTrack) {
+        let camSender = senders.find((s) => s.track && s.track.id === camVideoTrack.id);
+        if (!camSender) {
           try {
-            pc.addTrack(track, cameraStream);
+            camSender = pc.addTrack(camVideoTrack, cameraStream);
           } catch (e) {
             console.warn('Error adding camera video track to peer connection:', e);
           }
         }
-      });
+        if (camSender && typeof camSender.getParameters === 'function') {
+          try {
+            const params = camSender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 1200000; // 1.2 Mbps
+            params.encodings[0].maxFramerate = 30;
+            camSender.setParameters(params).catch(() => {});
+          } catch (e) {}
+        }
+      }
     }
   }
 
@@ -2933,6 +3086,7 @@
         socket.emit('voice:signal', {
           to: targetUserId,
           from: currentUser.id,
+          channelId: connectedVoiceChannel ? connectedVoiceChannel.id : undefined,
           signal: { candidate: event.candidate },
         });
       }
@@ -2946,26 +3100,32 @@
         // High fidelity incoming voice audio playback
         playRemoteAudio(targetUserId, remoteStream);
       } else if (track.kind === 'video') {
-        // Incoming screenshare or camera stream
-        const remoteUser = voiceStates.find((s) => s.user.id === targetUserId)?.user;
-        const username = remoteUser ? remoteUser.username : 'Membro';
+        const userState = voiceStates.find((s) => s.user.id === targetUserId);
+        const username = userState?.user?.username || 'Membro';
 
-        let streamKey = `${targetUserId}:screen`;
-        let streamType = 'screen';
-        let streamLabel = username;
-
-        if (activeStreams.has(`${targetUserId}:screen`)) {
-          streamKey = `${targetUserId}:cam`;
-          streamType = 'camera';
-          streamLabel = `${username} (Câmera)`;
+        let isScreen = false;
+        if (userState?.screenTrackId && track.id === userState.screenTrackId) {
+          isScreen = true;
+        } else if (userState?.cameraTrackId && track.id === userState.cameraTrackId) {
+          isScreen = false;
+        } else if (userState?.streaming && !userState?.video) {
+          isScreen = true;
+        } else if (userState?.video && !userState?.streaming) {
+          isScreen = false;
         } else {
-          const userState = voiceStates.find((s) => s.user.id === targetUserId);
-          if (userState && userState.video && !userState.streaming) {
-            streamKey = `${targetUserId}:cam`;
-            streamType = 'camera';
-            streamLabel = `${username} (Câmera)`;
+          const settings = track.getSettings ? track.getSettings() : {};
+          if (settings.displaySurface || (settings.width && settings.width > 1280)) {
+            isScreen = true;
+          } else if (!activeStreams.has(`${targetUserId}:screen`)) {
+            isScreen = !!userState?.streaming;
+          } else {
+            isScreen = false;
           }
         }
+
+        const streamKey = isScreen ? `${targetUserId}:screen` : `${targetUserId}:cam`;
+        const streamType = isScreen ? 'screen' : 'camera';
+        const streamLabel = isScreen ? username : `${username} (Câmera)`;
 
         activeStreams.set(streamKey, {
           stream: remoteStream,
@@ -2975,11 +3135,29 @@
           type: streamType,
           userId: targetUserId,
         });
+
         renderVideoGrid();
+        renderVoiceCallStage();
 
         track.onended = () => {
           activeStreams.delete(streamKey);
           renderVideoGrid();
+          renderVoiceCallStage();
+        };
+
+        track.onmute = () => {
+          setTimeout(() => {
+            const curState = voiceStates.find((s) => s.user.id === targetUserId);
+            if (isScreen && (!curState || !curState.streaming)) {
+              activeStreams.delete(streamKey);
+              renderVideoGrid();
+              renderVoiceCallStage();
+            } else if (!isScreen && (!curState || !curState.video)) {
+              activeStreams.delete(streamKey);
+              renderVideoGrid();
+              renderVoiceCallStage();
+            }
+          }, 1500);
         };
       }
     };
@@ -2998,7 +3176,7 @@
     return pc;
   }
 
-  // Renegotiate with a peer safely
+  // Renegotiate with a peer safely using W3C Perfect Negotiation
   async function renegotiateWithPeer(targetUserId, pc) {
     if (isMakingOffer.get(targetUserId)) return;
     try {
@@ -3010,11 +3188,12 @@
         socket.emit('voice:signal', {
           to: targetUserId,
           from: currentUser.id,
+          channelId: connectedVoiceChannel ? connectedVoiceChannel.id : undefined,
           signal: { sdp: pc.localDescription },
         });
       }
     } catch (err) {
-      console.warn(`Error creating WebRTC offer for ${targetUserId}:`, err);
+      console.warn(`[WebRTC] Error creating offer for ${targetUserId}:`, err);
     } finally {
       isMakingOffer.set(targetUserId, false);
     }
@@ -3040,7 +3219,7 @@
 
     participants.forEach((p) => {
       // Deterministic initiator: member with greater string ID sends initial offer
-      const isInitiator = currentUser.id > p.user.id;
+      const isInitiator = String(currentUser.id) > String(p.user.id);
       connectToVoicePeer(p.user.id, isInitiator);
     });
   }
@@ -3054,7 +3233,7 @@
     });
   }
 
-  // Process WebRTC Signaling Messages (SDP offers/answers and ICE candidates)
+  // Process WebRTC Signaling Messages (SDP offers/answers and ICE candidates) with Perfect Negotiation
   async function handleRemoteVoiceSignal(data) {
     if (!currentUser || (data.to && data.to !== currentUser.id) || data.from === currentUser.id) return;
 
@@ -3064,6 +3243,23 @@
     if (data.signal?.sdp) {
       try {
         const sdp = new RTCSessionDescription(data.signal.sdp);
+        const isOffer = sdp.type === 'offer';
+        const polite = String(currentUser.id) < String(fromUserId);
+        const isOfferCollision = isOffer && (isMakingOffer.get(fromUserId) || pc.signalingState !== 'stable');
+
+        if (isOfferCollision) {
+          if (!polite) {
+            console.log(`[WebRTC] Glare with ${fromUserId}: impolite peer ignoring offer`);
+            return;
+          }
+          console.log(`[WebRTC] Glare with ${fromUserId}: polite peer rolling back local offer`);
+          try {
+            await pc.setLocalDescription({ type: 'rollback' });
+          } catch (e) {
+            console.warn('[WebRTC] Rollback error:', e);
+          }
+        }
+
         await pc.setRemoteDescription(sdp);
 
         // Apply any ICE candidates that arrived before remoteDescription was set
@@ -3073,11 +3269,11 @@
           try {
             await pc.addIceCandidate(candidate);
           } catch (err) {
-            console.warn('Error applying queued ICE candidate:', err);
+            console.warn('[WebRTC] Error applying queued ICE candidate:', err);
           }
         }
 
-        if (sdp.type === 'offer') {
+        if (isOffer) {
           syncLocalTracksWithPeer(pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -3085,12 +3281,13 @@
             socket.emit('voice:signal', {
               to: fromUserId,
               from: currentUser.id,
+              channelId: connectedVoiceChannel ? connectedVoiceChannel.id : undefined,
               signal: { sdp: pc.localDescription },
             });
           }
         }
       } catch (err) {
-        console.warn(`Error handling SDP signal from ${fromUserId}:`, err);
+        console.warn(`[WebRTC] Error handling SDP signal from ${fromUserId}:`, err);
       }
     } else if (data.signal?.candidate) {
       try {
@@ -3104,7 +3301,7 @@
           iceCandidateQueues.get(fromUserId).push(candidate);
         }
       } catch (err) {
-        console.warn('Error adding ICE candidate:', err);
+        console.warn('[WebRTC] Error adding ICE candidate:', err);
       }
     }
   }
@@ -4597,11 +4794,11 @@
     });
 
     // 3. Synchronize activeStreams in-memory map
-    if (activeStreams.has(currentUser.id)) {
-      activeStreams.get(currentUser.id).username = currentUser.username;
+    if (activeStreams.has(`${currentUser.id}:screen`)) {
+      activeStreams.get(`${currentUser.id}:screen`).username = currentUser.username;
     }
-    if (activeStreams.has(`${currentUser.id}_cam`)) {
-      activeStreams.get(`${currentUser.id}_cam`).username = `${currentUser.username} (Câmera)`;
+    if (activeStreams.has(`${currentUser.id}:cam`)) {
+      activeStreams.get(`${currentUser.id}:cam`).username = `${currentUser.username} (Câmera)`;
     }
 
     // 4. Synchronize guildMembers in-memory list

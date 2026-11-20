@@ -1069,6 +1069,11 @@ body, html {
   position: relative;
   overflow: hidden;
   height: 100%;
+  width: 100%;
+}
+
+.voice-call-stage.has-stream .voice-participants-grid {
+  display: none !important;
 }
 
 .voice-participants-grid {
@@ -1816,31 +1821,65 @@ body, html {
 .voice-video-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  gap: 16px;
-  padding: 20px;
-  background-color: #000;
-  overflow-y: auto;
-  max-height: 65vh;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px 12px 76px 12px;
+  background-color: #111214;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-video-grid.single-stream {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  height: 100%;
+  width: 100%;
+}
+
+.voice-video-grid:not(.single-stream) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
 }
 
 .video-grid-item {
   position: relative;
-  background-color: #111214;
-  border-radius: 8px;
+  background-color: #000;
+  border-radius: 10px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
+}
+
+.single-stream .video-grid-item {
+  height: 100%;
+  width: 100%;
+  aspect-ratio: unset;
+}
+
+.voice-video-grid:not(.single-stream) .video-grid-item {
   aspect-ratio: 16 / 9;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  border: 2px solid rgba(255, 255, 255, 0.08);
+  max-height: 100%;
 }
 
 .video-grid-item video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .video-grid-item .stream-floating-bar {

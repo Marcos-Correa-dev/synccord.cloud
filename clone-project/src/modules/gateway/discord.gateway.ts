@@ -36,6 +36,8 @@ export interface GatewayVoiceState {
   speaking: boolean;
   streaming?: boolean;
   video?: boolean;
+  screenTrackId?: string | null;
+  cameraTrackId?: string | null;
 }
 
 @Injectable()
@@ -199,12 +201,22 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
   @SubscribeMessage('voice:stream_update')
   handleVoiceStreamUpdate(
     _client: Socket,
-    payload: { channelId: string; userId: string; streaming?: boolean; video?: boolean; username?: string },
+    payload: {
+      channelId: string;
+      userId: string;
+      streaming?: boolean;
+      video?: boolean;
+      username?: string;
+      screenTrackId?: string | null;
+      cameraTrackId?: string | null;
+    },
   ) {
     const state = this.voiceStates.get(payload.userId);
     if (state) {
       if (typeof payload.streaming === 'boolean') state.streaming = payload.streaming;
       if (typeof payload.video === 'boolean') state.video = payload.video;
+      if (payload.screenTrackId !== undefined) state.screenTrackId = payload.screenTrackId;
+      if (payload.cameraTrackId !== undefined) state.cameraTrackId = payload.cameraTrackId;
 
       this.server.emit('packet', {
         op: GatewayOpcode.DISPATCH,
@@ -215,6 +227,8 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
           username: payload.username || state.user.username,
           streaming: state.streaming ?? false,
           video: state.video ?? false,
+          screenTrackId: state.screenTrackId ?? null,
+          cameraTrackId: state.cameraTrackId ?? null,
         },
       });
     }
@@ -225,11 +239,31 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
     _client: Socket,
     payload: { to?: string; from: string; channelId?: string; signal: unknown; type?: string },
   ) {
-    this.server.emit('packet', {
-      op: GatewayOpcode.DISPATCH,
-      t: 'VOICE_SIGNAL',
-      d: payload,
-    });
+    if (payload.to) {
+      const targetState = this.voiceStates.get(payload.to);
+      if (targetState?.socketId) {
+        this.server.to(targetState.socketId).emit('packet', {
+          op: GatewayOpcode.DISPATCH,
+          t: 'VOICE_SIGNAL',
+          d: payload,
+        });
+        return;
+      }
+    }
+
+    if (payload.channelId) {
+      this.server.to(`voice:${payload.channelId}`).emit('packet', {
+        op: GatewayOpcode.DISPATCH,
+        t: 'VOICE_SIGNAL',
+        d: payload,
+      });
+    } else {
+      this.server.emit('packet', {
+        op: GatewayOpcode.DISPATCH,
+        t: 'VOICE_SIGNAL',
+        d: payload,
+      });
+    }
   }
 
   @SubscribeMessage('presence:update')
