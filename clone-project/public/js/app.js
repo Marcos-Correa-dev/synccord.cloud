@@ -358,30 +358,14 @@
     userVolumes.set(userId, volumePercent);
     saveUserVolumes();
 
-    // 1. Update Web Audio API GainNode in real-time
-    const gainEntry = remoteAudioGains.get(userId);
-    if (gainEntry && gainEntry.gainNode) {
-      try {
-        const targetGain = volumePercent / 100; // 0.0 to 2.0
-        if (gainEntry.context.state === 'suspended') {
-          gainEntry.context.resume().catch(() => {});
-        }
-        gainEntry.gainNode.gain.setValueAtTime(targetGain, gainEntry.context.currentTime);
-      } catch (err) {
-        console.warn(`[WebAudio] Error setting gain for ${userId}:`, err);
-      }
-    }
-
-    // 2. Update direct audio playback element
+    // 1. Update direct audio playback element
     const audioEl = remoteAudioElements.get(userId);
     if (audioEl) {
       if (volumePercent === 0) {
         audioEl.muted = true;
       } else {
         audioEl.muted = isDeafened;
-        if (!gainEntry) {
-          audioEl.volume = Math.min(1.0, volumePercent / 100);
-        }
+        audioEl.volume = Math.min(1.0, Math.max(0.0, volumePercent / 100));
       }
     }
 
@@ -991,7 +975,7 @@
         currentUser &&
         state.user.id !== currentUser.id
       ) {
-        const isInitiator = currentUser.id > state.user.id;
+        const isInitiator = String(currentUser.id) > String(state.user.id);
         connectToVoicePeer(state.user.id, isInitiator);
       }
     }
@@ -3010,7 +2994,7 @@
     }
   }
 
-  // Play remote audio through dedicated HTMLAudioElement with Web Audio API 0-200% Gain
+  // Play remote audio through dedicated HTMLAudioElement with native WebRTC hardware-accelerated playback
   function playRemoteAudio(userId, stream) {
     let audioEl = remoteAudioElements.get(userId);
     if (!audioEl) {
@@ -3023,34 +3007,14 @@
       remoteAudioElements.set(userId, audioEl);
     }
 
-    // Connect Web Audio API GainNode to allow volume amplification up to 200%
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      let gainEntry = remoteAudioGains.get(userId);
-
-      if (!gainEntry || gainEntry.context.state === 'closed') {
-        const ctx = new AudioCtx();
-        const source = ctx.createMediaStreamSource(stream);
-        const gainNode = ctx.createGain();
-        const dest = ctx.createMediaStreamDestination();
-
-        source.connect(gainNode);
-        gainNode.connect(dest);
-
-        const currentVol = getUserVolume(userId);
-        gainNode.gain.setValueAtTime(currentVol / 100, ctx.currentTime);
-
-        audioEl.srcObject = dest.stream;
-        remoteAudioGains.set(userId, { context: ctx, gainNode, sourceNode: source, destination: dest, stream });
-      } else {
-        audioEl.srcObject = gainEntry.destination.stream;
-      }
-    } catch (err) {
-      console.warn(`[WebAudio] Fallback to direct stream for ${userId}:`, err);
+    // Direct WebRTC MediaStream assignment ensures 100% reliable hardware-accelerated audio playback
+    if (audioEl.srcObject !== stream) {
       audioEl.srcObject = stream;
     }
 
-    audioEl.muted = isDeafened || (getUserVolume(userId) === 0);
+    const currentVol = getUserVolume(userId);
+    audioEl.muted = isDeafened || (currentVol === 0);
+    audioEl.volume = Math.min(1.0, Math.max(0.0, currentVol / 100));
 
     if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof audioEl.setSinkId === 'function') {
       audioEl.setSinkId(selectedAudioOutputId).catch(() => {});
@@ -3059,16 +3023,7 @@
     const playPromise = audioEl.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
-        console.warn(`Autoplay audio for user ${userId} waiting for interaction:`, err);
-        const retryAudioPlay = () => {
-          const entry = remoteAudioGains.get(userId);
-          if (entry && entry.context.state === 'suspended') {
-            entry.context.resume().catch(() => {});
-          }
-          audioEl.play().catch(() => {});
-          document.removeEventListener('click', retryAudioPlay);
-        };
-        document.addEventListener('click', retryAudioPlay, { once: true });
+        console.warn(`[WebRTC Voice] Autoplay audio for user ${userId} waiting for user interaction:`, err);
       });
     }
   }
@@ -3164,7 +3119,12 @@
 
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC] Connection with ${targetUserId}: ${pc.connectionState}`);
-      if (pc.connectionState === 'failed') {
+      if (pc.connectionState === 'connected') {
+        const audioEl = remoteAudioElements.get(targetUserId);
+        if (audioEl && audioEl.paused && audioEl.srcObject) {
+          audioEl.play().catch(() => {});
+        }
+      } else if (pc.connectionState === 'failed') {
         pc.restartIce();
       }
     };
@@ -3235,7 +3195,7 @@
 
   // Process WebRTC Signaling Messages (SDP offers/answers and ICE candidates) with Perfect Negotiation
   async function handleRemoteVoiceSignal(data) {
-    if (!currentUser || (data.to && data.to !== currentUser.id) || data.from === currentUser.id) return;
+    if (!currentUser || (data.to && String(data.to) !== String(currentUser.id)) || String(data.from) === String(currentUser.id)) return;
 
     const fromUserId = data.from;
     const pc = getOrCreatePeerConnection(fromUserId);
@@ -3316,16 +3276,6 @@
       peerConnections.delete(userId);
     }
 
-    const gainEntry = remoteAudioGains.get(userId);
-    if (gainEntry) {
-      try {
-        gainEntry.sourceNode.disconnect();
-        gainEntry.gainNode.disconnect();
-        gainEntry.context.close();
-      } catch (e) {}
-      remoteAudioGains.delete(userId);
-    }
-
     const audioEl = remoteAudioElements.get(userId);
     if (audioEl) {
       try {
@@ -3349,15 +3299,6 @@
     });
     peerConnections.clear();
 
-    remoteAudioGains.forEach((gainEntry) => {
-      try {
-        gainEntry.sourceNode.disconnect();
-        gainEntry.gainNode.disconnect();
-        gainEntry.context.close();
-      } catch (e) {}
-    });
-    remoteAudioGains.clear();
-
     remoteAudioElements.forEach((audioEl) => {
       try {
         audioEl.pause();
@@ -3371,21 +3312,61 @@
     isMakingOffer.clear();
   }
 
+  // Global audio playback unlocker to handle browser autoplay policies
+  function unlockAllRemoteAudio() {
+    remoteAudioElements.forEach((audioEl) => {
+      if (audioEl && audioEl.paused && audioEl.srcObject) {
+        audioEl.play().catch(() => {});
+      }
+    });
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+  }
+  document.addEventListener('click', unlockAllRemoteAudio, { passive: true });
+  document.addEventListener('keydown', unlockAllRemoteAudio, { passive: true });
+
   // Audio Capture with Device Selection & Volume VU Meter
   async function startAudioCapture(channelId) {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const audioConstraints = selectedAudioInputId !== 'default'
-          ? { deviceId: { exact: selectedAudioInputId } }
-          : true;
+        const baseAudioOptions = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        };
 
-        localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        let stream = null;
+        if (selectedAudioInputId && selectedAudioInputId !== 'default') {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: { ...baseAudioOptions, deviceId: { ideal: selectedAudioInputId } },
+            });
+          } catch (deviceErr) {
+            console.warn('[WebRTC Voice] Selected microphone unavailable, falling back to default:', deviceErr);
+          }
+        }
+
+        if (!stream) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: baseAudioOptions,
+          });
+        }
+
+        localAudioStream = stream;
+        localAudioStream.getAudioTracks().forEach((track) => {
+          track.enabled = !isMuted;
+        });
+
         refreshAudioDevices();
         attachAudioToAllPeers();
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
           audioContext = new AudioContextClass();
+          if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(() => {});
+          }
           const source = audioContext.createMediaStreamSource(localAudioStream);
           analyserNode = audioContext.createAnalyser();
           analyserNode.fftSize = 256;
@@ -3425,8 +3406,8 @@
           checkSpeaking();
         }
       }
-    } catch {
-      // Audio capture failed or ignored
+    } catch (err) {
+      console.error('[WebRTC Voice] Error capturing local microphone:', err);
     }
   }
 

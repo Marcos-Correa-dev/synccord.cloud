@@ -131,7 +131,8 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
       selfDeaf?: boolean;
     },
   ) {
-    const existing = this.voiceStates.get(payload.user.id);
+    const userId = String(payload.user.id);
+    const existing = this.voiceStates.get(userId);
     if (existing && existing.channelId && existing.channelId !== payload.channelId) {
       client.leave(`voice:${existing.channelId}`);
     }
@@ -146,7 +147,7 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
       speaking: false,
     };
 
-    this.voiceStates.set(payload.user.id, state);
+    this.voiceStates.set(userId, state);
     client.join(`voice:${payload.channelId}`);
     client.join(`channel:${payload.channelId}`);
 
@@ -164,18 +165,19 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
     client: Socket,
     payload: { guildId?: string; channelId?: string; userId: string },
   ) {
-    const state = this.voiceStates.get(payload.userId);
+    const userId = String(payload.userId);
+    const state = this.voiceStates.get(userId);
     if (state && state.channelId) {
       client.leave(`voice:${state.channelId}`);
       client.leave(`channel:${state.channelId}`);
-      this.voiceStates.delete(payload.userId);
+      this.voiceStates.delete(userId);
       this.server.emit('packet', {
         op: GatewayOpcode.DISPATCH,
         t: 'VOICE_STATE_UPDATE',
         d: {
           guildId: state.guildId,
           channelId: null,
-          userId: payload.userId,
+          userId,
         },
       });
     }
@@ -187,7 +189,8 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
     _client: Socket,
     payload: { channelId: string; userId: string; speaking: boolean },
   ) {
-    const state = this.voiceStates.get(payload.userId);
+    const userId = String(payload.userId);
+    const state = this.voiceStates.get(userId);
     if (state) {
       state.speaking = payload.speaking;
       this.server.to(`voice:${payload.channelId}`).emit('packet', {
@@ -211,7 +214,8 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
       cameraTrackId?: string | null;
     },
   ) {
-    const state = this.voiceStates.get(payload.userId);
+    const userId = String(payload.userId);
+    const state = this.voiceStates.get(userId);
     if (state) {
       if (typeof payload.streaming === 'boolean') state.streaming = payload.streaming;
       if (typeof payload.video === 'boolean') state.video = payload.video;
@@ -223,7 +227,7 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
         t: 'VOICE_STREAM_UPDATE',
         d: {
           channelId: payload.channelId,
-          userId: payload.userId,
+          userId,
           username: payload.username || state.user.username,
           streaming: state.streaming ?? false,
           video: state.video ?? false,
@@ -240,7 +244,7 @@ export class DiscordGateway implements OnGatewayConnection, OnGatewayDisconnect 
     payload: { to?: string; from: string; channelId?: string; signal: unknown; type?: string },
   ) {
     if (payload.to) {
-      const targetState = this.voiceStates.get(payload.to);
+      const targetState = this.voiceStates.get(String(payload.to));
       if (targetState?.socketId) {
         this.server.to(targetState.socketId).emit('packet', {
           op: GatewayOpcode.DISPATCH,
