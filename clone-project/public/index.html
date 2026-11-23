@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SyncCord</title>
+  <!-- Google Fonts: Swiss Brutalism & Technical Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400;1,700&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
   <link rel="stylesheet" href="/css/discord.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='scd_fav' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%236e7bff'/><stop offset='100%25' stop-color='%235865F2'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23scd_fav)'/><text x='50' y='65' font-family='Arial Black, Arial, sans-serif' font-weight='900' font-size='32' fill='%23ffffff' text-anchor='middle'>SCD</text></svg>">
 </head>
@@ -76,6 +84,11 @@
       <div class="user-panel" style="position: relative;">
         <!-- DISCORD MINI PROFILE FLYOUT POPOVER -->
         <div class="user-profile-popover" id="status-menu-popover" style="display: none;">
+          <div class="swiss-corner swiss-tl"></div>
+          <div class="swiss-corner swiss-tr"></div>
+          <div class="swiss-corner swiss-bl"></div>
+          <div class="swiss-corner swiss-br"></div>
+          
           <!-- Banner -->
           <div class="popover-banner" id="popover-banner">
             <div class="popover-banner-edit-btn" onclick="openUserSettingsTab('profiles')" title="Editar Perfil">
@@ -424,37 +437,160 @@
 
   </div>
 
+  <!-- INTRO SCREEN (Estilo TAG / Swiss Brutalism × iOS 2026) -->
+  <div class="intro-screen-overlay" id="intro-screen" style="display: none;">
+    <div class="intro-background-fx">
+      <div class="intro-grid-pattern"></div>
+      <div class="intro-glow-spot"></div>
+    </div>
+
+    <div class="intro-card">
+      <div class="swiss-corner swiss-tl"></div>
+      <div class="swiss-corner swiss-tr"></div>
+      <div class="swiss-corner swiss-bl"></div>
+      <div class="swiss-corner swiss-br"></div>
+
+      <!-- Topbar / Branding -->
+      <div class="intro-topbar">
+        <div class="brand-badge">
+          <i class="fa-solid fa-tag"></i> SYNCCORD // ENGINE
+        </div>
+        <div class="top-stats">
+          <div class="stat-pill spike">
+            <i class="fa-solid fa-bolt"></i>
+            <span>CORE:</span>
+            <span class="num">ONLINE 2026</span>
+          </div>
+          <span style="color: var(--tag-border);">•</span>
+          <div class="stat-pill">
+            <span>DSP:</span>
+            <span class="num" style="color: #00E699;">ARMED</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Headline Content -->
+      <div class="intro-hero-content">
+        <div class="intro-tagline">
+          <i class="fa-solid fa-bolt"></i> SWISS BRUTALISM × ULTRA LOW-LATENCY AUDIO RELAY
+        </div>
+        <h1 class="intro-hero-title">
+          NEXT-GEN <span>CONVERSATION</span> &amp; VOICE STAGE.
+        </h1>
+        <p class="intro-hero-desc">
+          Plataforma de comunicação hiper-otimizada com transmissão estéreo WebRTC Opus 48kHz, cancelamento acústico DSP e supressão de ruído militar.
+        </p>
+
+        <!-- Diagnostic Telemetry Box ("Box de Caixa") -->
+        <div class="intro-diag-box">
+          <div class="diag-header">
+            <span class="diag-title" style="font-size: 12px; margin-bottom: 0;">
+              <i class="fa-solid fa-terminal" style="color: var(--tag-red); margin-right: 6px;"></i> SEQUÊNCIA DE INICIALIZAÇÃO
+            </span>
+            <span class="stat-pill">
+              <i class="fa-solid fa-signal" style="color: #00E699;"></i>
+              <span class="num" style="color: #00E699;">12ms PING</span>
+            </span>
+          </div>
+
+          <div class="diagnosis-grid" style="margin-top: 10px; margin-bottom: 12px;">
+            <div class="diag-card">
+              <div class="diag-header">
+                <span class="diag-badge badge-peak">WEBRTC</span>
+                <span style="font-size: 11px; font-weight: 700; color: #00E699;">ATIVO</span>
+              </div>
+              <div class="diag-title">Stereo Opus 48kHz</div>
+              <div class="diag-text">Pipeline de alta fidelidade calibrado para conversação imersiva.</div>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-header">
+                <span class="diag-badge badge-fix">DSP NOISE</span>
+                <span style="font-size: 11px; font-weight: 700; color: #00E699;">ARMED</span>
+              </div>
+              <div class="diag-title">Filtro Krisp DSP</div>
+              <div class="diag-text">Supressão acústica de fundo com processamento em tempo real.</div>
+            </div>
+
+            <div class="diag-card">
+              <div class="diag-header">
+                <span class="diag-badge badge-drop">CRIPTOGRAFIA</span>
+                <span style="font-size: 11px; font-weight: 700; color: var(--tag-orange);">TLS 1.3</span>
+              </div>
+              <div class="diag-title">Túnel Seguro</div>
+              <div class="diag-text">Transmissão ponto-a-ponto com certificação de ponta a ponta.</div>
+            </div>
+          </div>
+
+          <!-- Boot progress meter -->
+          <div class="intro-boot-progress-wrap">
+            <div class="intro-boot-progress-bar" id="intro-boot-progress-bar"></div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="intro-actions-row">
+          <button class="btn-action primary intro-btn-large" id="intro-btn-enter" onclick="dismissIntroAndOpenAuth('login')">
+            <i class="fa-solid fa-arrow-right-to-bracket"></i> ENTRAR NA PLATAFORMA
+          </button>
+          <button class="btn-action intro-btn-large" id="intro-btn-register" onclick="dismissIntroAndOpenAuth('register')">
+            <i class="fa-solid fa-user-plus"></i> CRIAR NOVA CONTA
+          </button>
+        </div>
+
+        <div class="intro-footer-tags">
+          <span>SWISS BRUTALISM × IOS SYSTEM</span> • <span>VERSION 0.1.13</span> • <span>HIGH-CONVERSION 2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- AUTH MODAL (Login / Register) -->
   <div class="modal-overlay" id="auth-modal">
     <div class="modal-content">
-      <div class="modal-title">Bem-vindo ao SyncCord!</div>
-      <div class="modal-subtitle">Faça login ou crie sua conta para entrar nos servidores.</div>
+      <div class="swiss-corner swiss-tl"></div>
+      <div class="swiss-corner swiss-tr"></div>
+      <div class="swiss-corner swiss-bl"></div>
+      <div class="swiss-corner swiss-br"></div>
 
-      <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-        <button id="auth-tab-login" class="btn-secondary active" style="font-weight: 700; color: var(--accent);" onclick="setAuthTab('login')">Entrar</button>
-        <button id="auth-tab-register" class="btn-secondary" style="font-weight: 700;" onclick="setAuthTab('register')">Registrar-se</button>
+      <div class="brand-badge" style="align-self: center; margin-bottom: 2px;">
+        <i class="fa-solid fa-tag"></i> SYNCCORD // AUTH
       </div>
 
-      <form id="auth-form" style="display: flex; flex-direction: column; gap: 14px;">
+      <div class="modal-title">Acesse sua Conta</div>
+      <div class="modal-subtitle">Conecte-se com sua credencial segura ou cadastre-se para entrar nos canais.</div>
+
+      <div class="auth-tabs-row" style="display: flex; gap: 8px; border-bottom: 1px solid var(--tag-border); padding-bottom: 10px;">
+        <button id="auth-tab-login" class="btn-secondary active auth-tab-btn" onclick="setAuthTab('login')">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
+        </button>
+        <button id="auth-tab-register" class="btn-secondary auth-tab-btn" onclick="setAuthTab('register')">
+          <i class="fa-solid fa-user-plus"></i> Registrar-se
+        </button>
+      </div>
+
+      <form id="auth-form" style="display: flex; flex-direction: column; gap: 14px; margin-top: 6px;">
         <div class="form-group" id="auth-username-group" style="display: none;">
-          <label class="form-label">Nome de Usuário</label>
+          <label class="form-label">Nome de Usuário // Username</label>
           <input type="text" class="form-input" id="auth-username" placeholder="seu_usuario">
         </div>
 
         <div class="form-group">
-          <label class="form-label">E-mail</label>
+          <label class="form-label">E-mail // Credencial</label>
           <input type="email" class="form-input" id="auth-email" placeholder="nome@exemplo.com" required>
         </div>
 
         <div class="form-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="form-label" style="margin-bottom: 0;">Senha</label>
-            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 600;">Esqueceu sua senha?</a>
+            <label class="form-label" style="margin-bottom: 0;">Senha // Password</label>
+            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--tag-red); text-decoration: none; font-weight: 700;">Esqueceu sua senha?</a>
           </div>
           <input type="password" class="form-input" id="auth-password" placeholder="••••••••" required>
         </div>
 
-        <button type="submit" class="btn-primary" id="auth-submit-btn">Entrar</button>
+        <button type="submit" class="btn-primary" id="auth-submit-btn" style="margin-top: 4px;">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
+        </button>
       </form>
     </div>
   </div>
