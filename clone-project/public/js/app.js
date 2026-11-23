@@ -744,7 +744,7 @@
     if (resetToken) {
       openResetPasswordModal(resetToken);
     } else if (!token && !refreshToken) {
-      showAuthModal(true);
+      showIntroScreen();
     } else {
       updateUserPanel();
       initWebSocket();
@@ -4805,6 +4805,53 @@
   }
   window.openUserSettingsTab = openUserSettingsTab;
 
+  function showIntroScreen() {
+    const introEl = document.getElementById('intro-screen');
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) authModal.classList.remove('open');
+    if (introEl) {
+      introEl.style.display = 'flex';
+      introEl.classList.remove('fade-out');
+      // Trigger browser layout pass to enable transitions
+      void introEl.offsetWidth;
+      introEl.classList.add('open');
+
+      // Animate boot progress bar from 0 to 100%
+      const bar = document.getElementById('intro-boot-progress-bar');
+      if (bar) {
+        bar.style.width = '0%';
+        setTimeout(() => {
+          bar.style.transition = 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1)';
+          bar.style.width = '100%';
+        }, 120);
+      }
+    } else {
+      showAuthModal(true);
+    }
+  }
+  window.showIntroScreen = showIntroScreen;
+
+  function dismissIntroAndOpenAuth(tab = 'login') {
+    const introEl = document.getElementById('intro-screen');
+    if (introEl && introEl.classList.contains('open')) {
+      introEl.classList.add('fade-out');
+      setTimeout(() => {
+        introEl.style.display = 'none';
+        introEl.classList.remove('open', 'fade-out');
+        showAuthModal(true);
+        if (typeof window.setAuthTab === 'function') {
+          window.setAuthTab(tab);
+        }
+      }, 350);
+    } else {
+      showAuthModal(true);
+      if (typeof window.setAuthTab === 'function') {
+        window.setAuthTab(tab);
+      }
+    }
+  }
+  window.dismissIntroAndOpenAuth = dismissIntroAndOpenAuth;
+
   function showAuthModal(show) {
     authModalEl.classList.toggle('open', show);
   }
@@ -4834,10 +4881,19 @@
 
   window.setAuthTab = function (tab) {
     const isLogin = tab === 'login';
-    document.getElementById('auth-tab-login').classList.toggle('active', isLogin);
-    document.getElementById('auth-tab-register').classList.toggle('active', !isLogin);
-    document.getElementById('auth-username-group').style.display = isLogin ? 'none' : 'flex';
-    document.getElementById('auth-submit-btn').textContent = isLogin ? 'Entrar' : 'Criar Conta';
+    const loginTab = document.getElementById('auth-tab-login');
+    const registerTab = document.getElementById('auth-tab-register');
+    const userGroup = document.getElementById('auth-username-group');
+    const submitBtn = document.getElementById('auth-submit-btn');
+
+    if (loginTab) loginTab.classList.toggle('active', isLogin);
+    if (registerTab) registerTab.classList.toggle('active', !isLogin);
+    if (userGroup) userGroup.style.display = isLogin ? 'none' : 'flex';
+    if (submitBtn) {
+      submitBtn.innerHTML = isLogin ?
+        '<i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar' :
+        '<i class="fa-solid fa-user-plus"></i> Criar Conta';
+    }
   };
 
   // ==========================================================================
@@ -5626,96 +5682,130 @@
         return `
           <div class="settings-pane-title">${t('myAccount.title')}</div>
           
-          <div class="settings-card" style="padding-top: 0; overflow: hidden;">
+          <div class="settings-card box-accent-red" style="padding-top: 0; overflow: hidden; position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
             <div class="settings-profile-banner" style="${currentUser?.bannerColor ? `background: ${escapeHtml(currentUser.bannerColor)};` : ''}">
               <div class="settings-profile-avatar-wrapper" style="overflow: hidden; cursor: pointer;" onclick="switchSettingsTab('profiles')" title="${t('myAccount.editUserProfile')}">
                 ${currentUser?.avatar ?
                   `<img src="${escapeHtml(currentUser.avatar)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />` :
                   username.substring(0, 2).toUpperCase()
                 }
-                <div class="status-dot ${userStatus}" style="width: 16px; height: 16px; border: 3px solid var(--bg-tertiary); bottom: 0; right: 0;"></div>
+                <div class="status-dot ${userStatus}" style="width: 16px; height: 16px; border: 3px solid #121b1d; bottom: 0; right: 0;"></div>
               </div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
               <div>
-                <div style="font-size: 20px; font-weight: 700; color: var(--text-header);">${username}</div>
-                <div style="font-size: 13px; color: var(--text-muted);">#${discriminator}</div>
+                <div style="font-family: var(--font-display); font-size: 22px; font-weight: 800; color: #fff;">${username}</div>
+                <div style="font-family: var(--font-mono); font-size: 12px; color: var(--tag-concrete); margin-top: 2px;">#${discriminator} • ID: USER-${discriminator}</div>
               </div>
-              <button class="btn-primary" style="padding: 6px 14px; font-size: 13px;" onclick="switchSettingsTab('profiles')">
-                ${t('myAccount.editUserProfile')}
+              <button class="btn-action primary" style="font-size: 12px;" onclick="switchSettingsTab('profiles')">
+                <i class="fa-solid fa-pen"></i> ${t('myAccount.editUserProfile')}
               </button>
             </div>
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.username')}</div>
-                <div class="settings-info-value">${username}#${discriminator}</div>
+                <div class="settings-info-label">${t('myAccount.username')} // USERNAME</div>
+                <div class="settings-info-value" style="font-family: var(--font-mono);">${username}#${discriminator}</div>
               </div>
               <button class="settings-btn-inline" onclick="openEditUsernameModal()">${t('common.edit')}</button>
             </div>
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.email')}</div>
-                <div class="settings-info-value">${email}</div>
+                <div class="settings-info-label">${t('myAccount.email')} // CREDENCIAL</div>
+                <div class="settings-info-value" style="font-family: var(--font-mono);">${email}</div>
               </div>
               <button class="settings-btn-inline" onclick="alert('${t('myAccount.email')}: ' + '${email}')">${t('myAccount.reveal')}</button>
             </div>
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.phone')}</div>
-                <div class="settings-info-value" style="color: var(--text-muted);">${t('myAccount.noPhone')}</div>
+                <div class="settings-info-label">${t('myAccount.phone')} // CONTATO</div>
+                <div class="settings-info-value" style="color: var(--tag-concrete); font-family: var(--font-mono);">${t('myAccount.noPhone')}</div>
               </div>
               <button class="settings-btn-inline" onclick="alert('${t('myAccount.noPhone')}')">${t('myAccount.add')}</button>
             </div>
           </div>
 
           <div class="settings-section-subtitle">${t('myAccount.passwordAuth')}</div>
-          <div class="settings-card">
-            <button class="btn-primary" style="margin-bottom: 16px;" onclick="promptChangePassword()">${t('myAccount.changePassword')}</button>
+          <div class="settings-card box-accent-orange" style="position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
+            <button class="btn-action" style="margin-bottom: 16px;" onclick="promptChangePassword()">
+              <i class="fa-solid fa-key"></i> ${t('myAccount.changePassword')}
+            </button>
             <div class="discord-toggle-row" style="border: none; padding: 0;">
               <div class="discord-toggle-info">
                 <div class="discord-toggle-title">${t('myAccount.twoFactor')}</div>
                 <div class="discord-toggle-desc">${t('myAccount.twoFactorDesc')}</div>
               </div>
-              <button class="settings-btn-inline" style="color: var(--green);" onclick="alert('${t('myAccount.enabled')}')">${t('myAccount.enabled')}</button>
+              <span class="diag-badge badge-fix">${t('myAccount.enabled')}</span>
             </div>
           </div>
 
           <div class="settings-section-subtitle">${t('myAccount.accountRemoval')}</div>
-          <div class="settings-card" style="border: 1px solid rgba(242, 63, 66, 0.3);">
-            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+          <div class="settings-card" style="border: 1px solid rgba(255, 0, 49, 0.3); position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
+            <div style="font-size: 13px; color: var(--tag-concrete); margin-bottom: 14px;">
               ${t('myAccount.accountRemovalDesc')}
             </div>
-            <div style="display: flex; gap: 12px;">
-              <button class="settings-btn-inline" style="background-color: var(--red); color: white;" onclick="promptDeactivateAccount()">${t('myAccount.deactivateAccount')}</button>
-              <button class="settings-btn-inline" style="border: 1px solid var(--red); color: var(--red);" onclick="promptDeleteAccount()">${t('myAccount.deleteAccount')}</button>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <button class="btn-action primary" style="background: var(--tag-red); border-color: var(--tag-red);" onclick="promptDeactivateAccount()">${t('myAccount.deactivateAccount')}</button>
+              <button class="btn-action" style="border-color: var(--tag-red); color: var(--tag-red);" onclick="promptDeleteAccount()">${t('myAccount.deleteAccount')}</button>
             </div>
           </div>
         `;
 
       case 'profiles':
         return `
-          <div class="settings-pane-title">${t('profiles.title')}</div>
+          <div class="settings-pane-title">${t('profiles.title')} // IDENTIDADE VISUAL</div>
           <div class="settings-section-subtitle">${t('profiles.subtitle')}</div>
           
-          <div class="settings-card">
+          <!-- BOX DE CAIXA 1: IDENTIDADE VISUAL & AVATAR -->
+          <div class="settings-card box-accent-red" style="position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div class="brand-badge">
+                <i class="fa-solid fa-tag"></i> IDENTIDADE // AVATAR &amp; BANNER
+              </div>
+              <div class="stat-pill spike">
+                <i class="fa-solid fa-bolt"></i>
+                <span>STATUS:</span>
+                <span class="num">ONLINE</span>
+              </div>
+            </div>
+
             <!-- AVATAR PHOTO & MOLD SECTION -->
             <div class="form-group" style="margin-bottom: 24px;">
-              <label class="form-label" style="margin-bottom: 8px;">${t('profiles.avatarLabel')}</label>
-              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+              <label class="form-label">${t('profiles.avatarLabel')}</label>
+              <div style="font-size: 12.5px; color: var(--tag-concrete); margin-bottom: 14px;">
                 ${t('profiles.avatarDesc')}
               </div>
 
-              <div style="display: flex; align-items: center; gap: 20px;">
+              <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
                 <!-- Circular Avatar Mold with Hover Effect -->
                 <div class="avatar-mold-container" id="profile-avatar-mold-btn" onclick="triggerProfilePhotoUpload()" title="${t('profiles.choosePhoto')}">
                   <div id="profile-avatar-display-container" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
                     ${currentUser?.avatar ? 
                       `<img src="${escapeHtml(currentUser.avatar)}" id="profile-avatar-img-preview" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" />` : 
-                      `<div id="profile-avatar-initials-preview" style="font-size: 28px; font-weight: 700; color: white;">${username.substring(0, 2).toUpperCase()}</div>`
+                      `<div id="profile-avatar-initials-preview" style="font-family: var(--font-display); font-size: 28px; font-weight: 800; color: white;">${username.substring(0, 2).toUpperCase()}</div>`
                     }
                   </div>
                   <!-- Camera Hover Overlay -->
@@ -5733,45 +5823,107 @@
 
                 <!-- Action buttons beside the mold -->
                 <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <button type="button" class="btn-primary" style="padding: 8px 16px; font-size: 13px; font-weight: 600;" onclick="triggerProfilePhotoUpload()">
-                    ${t('profiles.choosePhoto')}
+                  <button type="button" class="btn-action primary" onclick="triggerProfilePhotoUpload()">
+                    <i class="fa-solid fa-camera"></i> ${t('profiles.choosePhoto')}
                   </button>
-                  <button type="button" class="btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="handleRemoveAvatar()">
-                    ${t('profiles.removePhoto')}
+                  <button type="button" class="btn-action" onclick="handleRemoveAvatar()">
+                    <i class="fa-solid fa-trash-can"></i> ${t('profiles.removePhoto')}
                   </button>
                 </div>
               </div>
             </div>
 
+            <!-- Banner Color Picker -->
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label class="form-label">${t('profiles.bannerColor')}</label>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <input type="color" id="profile-banner-color" value="${escapeHtml(currentUser?.bannerColor || '#FF0031')}" style="border: 1px solid var(--tag-border); width: 48px; height: 38px; border-radius: 8px; cursor: pointer; background: transparent;" />
+                <span style="font-size: 13px; font-family: var(--font-mono); color: var(--tag-concrete);">${t('profiles.bannerColorDesc')}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOX DE CAIXA 2: METADADOS & APRESENTAÇÃO (HOOK CALLOUT) -->
+          <div class="settings-card box-accent-orange" style="position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div class="brand-badge" style="background: var(--tag-orange);">
+                <i class="fa-solid fa-id-badge"></i> DADOS DO PERFIL // BIO &amp; APRESENTAÇÃO
+              </div>
+            </div>
+
             <!-- Profile Info Fields -->
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.displayName')}</label>
+              <label class="form-label">${t('profiles.displayName')} // DISPLAY NAME</label>
               <input type="text" class="form-input" id="profile-display-name" value="${username}" placeholder="${t('profiles.displayNamePlaceholder')}" onkeydown="if(event.key==='Enter') promptSaveProfileChanges()" />
             </div>
 
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.pronouns')}</label>
+              <label class="form-label">${t('profiles.pronouns')} // PRONOUNS</label>
               <input type="text" class="form-input" id="profile-pronouns" value="${escapeHtml(currentUser?.pronouns || '')}" placeholder="${t('profiles.pronounsPlaceholder')}" />
             </div>
 
-            <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.bio')}</label>
-              <textarea class="form-input" id="profile-bio" rows="3" placeholder="${t('profiles.bioPlaceholder')}">${escapeHtml(currentUser?.bio || '')}</textarea>
+            <div class="form-group" style="margin-bottom: 20px;">
+              <label class="form-label">${t('profiles.bio')} // BIOGRAFIA &amp; RECADOS</label>
+              <textarea class="form-input" id="profile-bio" rows="3" style="height: auto; padding: 12px;" placeholder="${t('profiles.bioPlaceholder')}">${escapeHtml(currentUser?.bio || '')}</textarea>
             </div>
 
-            <div class="form-group" style="margin-bottom: 24px;">
-              <label class="form-label">${t('profiles.bannerColor')}</label>
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <input type="color" id="profile-banner-color" value="${escapeHtml(currentUser?.bannerColor || '#5865f2')}" style="border: none; width: 44px; height: 36px; border-radius: 4px; cursor: pointer; background: transparent;" />
-                <span style="font-size: 13px; color: var(--text-muted);">${t('profiles.bannerColorDesc')}</span>
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <button class="btn-primary" style="padding: 10px 24px; font-size: 14px; font-weight: 700;" onclick="promptSaveProfileChanges()">
-                ${t('profiles.saveChanges')}
+            <div style="display: flex; gap: 14px; align-items: center;">
+              <button class="btn-primary" style="padding: 10px 24px;" onclick="promptSaveProfileChanges()">
+                <i class="fa-solid fa-floppy-disk"></i> ${t('profiles.saveChanges')}
               </button>
-              <span id="profile-save-status" style="font-size: 13px; color: var(--green); display: none;">${t('profiles.savedSuccess')}</span>
+              <span id="profile-save-status" style="font-family: var(--font-mono); font-size: 13px; color: var(--tag-green); display: none;">✓ ${t('profiles.savedSuccess')}</span>
+            </div>
+          </div>
+
+          <!-- BOX DE CAIXA 3: DIAGNÓSTICO ESTRATÉGICO & TELEMETRIA -->
+          <div class="settings-card" style="position: relative;">
+            <div class="swiss-corner swiss-tl"></div>
+            <div class="swiss-corner swiss-tr"></div>
+            <div class="swiss-corner swiss-bl"></div>
+            <div class="swiss-corner swiss-br"></div>
+
+            <div class="diag-header" style="margin-bottom: 12px;">
+              <span class="diag-title" style="margin-bottom: 0;">
+                <i class="fa-solid fa-microchip" style="color: var(--tag-red); margin-right: 6px;"></i> TELEMETRIA &amp; DIAGNÓSTICO DO CLIENTE
+              </span>
+              <span class="stat-pill">
+                <i class="fa-solid fa-shield-halved" style="color: #00E699;"></i>
+                <span class="num" style="color: #00E699;">ATIVO</span>
+              </span>
+            </div>
+
+            <div class="diagnosis-grid">
+              <div class="diag-card">
+                <div class="diag-header">
+                  <span class="diag-badge badge-peak">ÁUDIO HD</span>
+                  <span style="font-size: 11px; font-weight: 700; color: #00E699;">48kHz</span>
+                </div>
+                <div class="diag-title">WebRTC Opus Stereo</div>
+                <div class="diag-text">Pipeline de baixa latência ativo e balanceado para conversação simultânea.</div>
+              </div>
+
+              <div class="diag-card">
+                <div class="diag-header">
+                  <span class="diag-badge badge-fix">DSP NOISE</span>
+                  <span style="font-size: 11px; font-weight: 700; color: #00E699;">ARMED</span>
+                </div>
+                <div class="diag-title">Krisp AI Cancellation</div>
+                <div class="diag-text">Supressão acústica de ruídos do ambiente processada em tempo real.</div>
+              </div>
+
+              <div class="diag-card">
+                <div class="diag-header">
+                  <span class="diag-badge badge-drop">CRIPTOGRAFIA</span>
+                  <span style="font-size: 11px; font-weight: 700; color: var(--tag-orange);">P2P</span>
+                </div>
+                <div class="diag-title">Segurança TLS 1.3</div>
+                <div class="diag-text">Pacotes criptografados com integridade de handshake contínua.</div>
+              </div>
             </div>
           </div>
         `;
