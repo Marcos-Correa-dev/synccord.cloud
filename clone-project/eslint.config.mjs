@@ -55,22 +55,42 @@ export default defineConfig([
     // Frontend browser scripts
     files: ["public/**/*.js"],
     languageOptions: {
+      sourceType: "script",
       globals: {
         window: "readonly",
         document: "readonly",
         navigator: "readonly",
         requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        Float32Array: "readonly",
         localStorage: "readonly",
+        sessionStorage: "readonly",
         location: "readonly",
         io: "readonly",
         alert: "readonly",
         AudioContext: "readonly",
+        webkitAudioContext: "readonly",
         Audio: "readonly",
         URLSearchParams: "readonly",
         RTCPeerConnection: "readonly",
         RTCSessionDescription: "readonly",
         RTCIceCandidate: "readonly",
+        MediaStream: "readonly",
+        FileReader: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
       },
+    },
+    rules: {
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {
@@ -98,24 +118,6 @@ export default defineConfig([
     },
     rules: {
       "@typescript-eslint/no-require-imports": "off",
-    },
-  },
-  {
-    files: ["public/**/*.js"],
-    languageOptions: {
-      sourceType: "script",
-      globals: {
-        window: "readonly",
-        document: "readonly",
-        localStorage: "readonly",
-        alert: "readonly",
-        console: "readonly",
-        fetch: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
-        io: "readonly",
-        FileReader: "readonly",
-      },
     },
   },
   globalIgnores([
