@@ -714,6 +714,11 @@
     refreshAudioDevices();
     applyAppearanceSettings(currentTheme, currentAccentColor);
 
+    if (window.__IS_NATIVE_DESKTOP__) {
+      const downloadBtn = document.getElementById('header-btn-download-app');
+      if (downloadBtn) downloadBtn.style.display = 'none';
+    }
+
     // Check expiration of saved status
     if (savedStatus?.expiresAt && Date.now() > savedStatus.expiresAt) {
       userStatus = 'online';
@@ -2298,6 +2303,12 @@
     if (dockBtnToggleChatEl) {
       dockBtnToggleChatEl.classList.toggle('active', isChatOpenInVoice);
     }
+    const dockBtnKrispEl = document.getElementById('dock-btn-krisp');
+    if (dockBtnKrispEl && window.SyncCordAudioSettings) {
+      const isKrisp = window.SyncCordAudioSettings.get('noiseSuppression');
+      dockBtnKrispEl.classList.toggle('active', !!isKrisp);
+      dockBtnKrispEl.title = isKrisp ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído (Desativada)';
+    }
   }
 
   // Join Voice Channel
@@ -2335,6 +2346,14 @@
     selectChannel(channel);
     await startAudioCapture(channel.id);
     syncVoiceConnections();
+
+    if (window.__desktopNotify) {
+      window.__desktopNotify('voice', {
+        isMuted,
+        isDeaf: isDeafened,
+        channelName: channel.name,
+      });
+    }
   }
 
   // Leave Voice Channel
@@ -2342,6 +2361,14 @@
     if (!connectedVoiceChannel) return;
 
     playVoiceLeaveSound(true);
+
+    if (window.__desktopNotify) {
+      window.__desktopNotify('voice', {
+        isMuted,
+        isDeaf: isDeafened,
+        channelName: '',
+      });
+    }
 
     stopScreenShare();
     stopCamera();
@@ -2410,6 +2437,42 @@
           audioOutputSelectEl.appendChild(opt);
         });
       }
+
+      // Check Bluetooth conflict & anti-muffle advisory
+      if (window.WebRtcAudioAdapter) {
+        const conflict = window.WebRtcAudioAdapter.checkBluetoothConflict(
+          devices,
+          selectedAudioInputId,
+          selectedAudioOutputId,
+        );
+        const bannerEl = document.getElementById('settings-bluetooth-banner');
+        if (bannerEl) {
+          if (conflict.hasBluetoothIssue) {
+            bannerEl.style.display = 'block';
+            bannerEl.innerHTML = `
+              <div style="display: flex; gap: 10px; align-items: flex-start;">
+                <span style="font-size: 20px;">💡</span>
+                <div style="flex: 1;">
+                  <div style="font-weight: 700; color: #fff; font-size: 13px; margin-bottom: 4px;">Dica de Alta Fidelidade (Fone Bluetooth)</div>
+                  <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">${conflict.warningMessage}</div>
+                  ${conflict.recommendedInputId ? `<button type="button" class="btn-primary" id="btn-fix-bluetooth-mic" style="margin-top: 8px; font-size: 11px; padding: 4px 12px;">Usar Microfone do PC (Manter Som Estéreo)</button>` : ''}
+                </div>
+              </div>
+            `;
+            const fixBtn = document.getElementById('btn-fix-bluetooth-mic');
+            if (fixBtn && conflict.recommendedInputId) {
+              fixBtn.onclick = () => {
+                switchAudioInput(conflict.recommendedInputId);
+                const inputSelect = document.getElementById('settings-audio-input-select');
+                if (inputSelect) inputSelect.value = conflict.recommendedInputId;
+                bannerEl.style.display = 'none';
+              };
+            }
+          } else {
+            bannerEl.style.display = 'none';
+          }
+        }
+      }
     } catch (err) {
       console.warn('Error enumerating audio devices:', err);
     }
@@ -2453,6 +2516,9 @@
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
+      if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof ctx.setSinkId === 'function') {
+        ctx.setSinkId(selectedAudioOutputId).catch(() => {});
+      }
 
       if (soundKey === 'airhorn') {
         [233, 466, 699].forEach((freq) => {
@@ -2622,22 +2688,35 @@
         return;
       }
 
-      screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: 'always',
-          displaySurface: 'monitor',
-          frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-        },
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 2,
-          sampleRate: 48000,
-        },
-      });
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always',
+            displaySurface: 'monitor',
+            frameRate: { ideal: 60, max: 60 },
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+          },
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2,
+            sampleRate: 48000,
+          },
+        });
+      } catch (audioConstraintErr) {
+        console.warn('[ScreenShare] getDisplayMedia com áudio falhou, tentando apenas vídeo:', audioConstraintErr);
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always',
+            frameRate: { ideal: 60, max: 60 },
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+          },
+          audio: false,
+        });
+      }
 
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack && 'contentHint' in videoTrack) {
@@ -2921,13 +3000,15 @@
   // Bug 2: Get active outgoing audio track (mixes mic + screen audio into one seamless track)
   function getActiveOutgoingAudioTrack() {
     const screenAudioTracks = screenStream ? screenStream.getAudioTracks() : [];
-    const micAudioTrack = localAudioStream ? localAudioStream.getAudioTracks()[0] : null;
+    const micAudioTrack = window.SyncCordAudioPipeline
+      ? window.SyncCordAudioPipeline.getOutgoingAudioTrack()
+      : (localAudioStream ? localAudioStream.getAudioTracks()[0] : null);
 
     if (screenAudioTracks.length > 0 && micAudioTrack) {
       try {
         if (!mixedAudioContext || mixedAudioContext.state === 'closed') {
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
-          mixedAudioContext = new AudioCtx();
+          mixedAudioContext = new AudioCtx({ latencyHint: 'interactive', sampleRate: 48000 });
         }
         if (mixedAudioContext.state === 'suspended') {
           mixedAudioContext.resume().catch(() => {});
@@ -3395,31 +3476,59 @@
   document.addEventListener('click', unlockAllRemoteAudio, { passive: true });
   document.addEventListener('keydown', unlockAllRemoteAudio, { passive: true });
 
-  // Audio Capture with Device Selection & Volume VU Meter
+  // Audio Capture with Device Selection, Hexagonal Pipeline & Noise Suppression
   async function startAudioCapture(channelId) {
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const baseAudioOptions = {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        };
+      if (window.SyncCordAudioPipeline) {
+        localAudioStream = await window.SyncCordAudioPipeline.start(selectedAudioInputId);
+        window.SyncCordAudioPipeline.setMuted(isMuted);
 
-        let stream = null;
-        if (selectedAudioInputId && selectedAudioInputId !== 'default') {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: { ...baseAudioOptions, deviceId: { ideal: selectedAudioInputId } },
+        window.SyncCordAudioPipeline.onSpeakingChange((speaking) => {
+          if (!currentUser) return;
+          const userSpeaking = !isMuted && speaking;
+          updateUserSpeakingUI(currentUser.id, userSpeaking);
+          if (socket && connectedVoiceChannel) {
+            socket.emit('voice:speaking', {
+              channelId: connectedVoiceChannel.id,
+              userId: currentUser.id,
+              speaking: userSpeaking,
             });
-          } catch (deviceErr) {
-            console.warn('[WebRTC Voice] Selected microphone unavailable, falling back to default:', deviceErr);
           }
-        }
+        });
 
-        if (!stream) {
+        window.SyncCordAudioPipeline.onVolumeLevel((average) => {
+          if (micMeterFillEl) {
+            const meterPercent = isMuted ? 0 : Math.min(100, (average / 70) * 100);
+            micMeterFillEl.style.width = `${meterPercent}%`;
+          }
+          const settingsMeter = document.getElementById('settings-mic-meter-fill');
+          if (settingsMeter) {
+            const meterPercent = isMuted ? 0 : Math.min(100, (average / 70) * 100);
+            settingsMeter.style.width = `${meterPercent}%`;
+          }
+        });
+
+        refreshAudioDevices();
+        attachAudioToAllPeers();
+        return;
+      }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        let stream;
+        try {
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: baseAudioOptions,
+            audio: {
+              sampleRate: { ideal: 48000 },
+              channelCount: { ideal: 2 },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              deviceId: selectedAudioInputId && selectedAudioInputId !== 'default' ? { ideal: selectedAudioInputId } : undefined,
+            },
           });
+        } catch (cErr) {
+          console.warn('[WebRTC Voice] Fallback to simple mic capture:', cErr);
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
         localAudioStream = stream;
@@ -3429,51 +3538,6 @@
 
         refreshAudioDevices();
         attachAudioToAllPeers();
-
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (AudioContextClass) {
-          audioContext = new AudioContextClass();
-          if (audioContext.state === 'suspended') {
-            audioContext.resume().catch(() => {});
-          }
-          const source = audioContext.createMediaStreamSource(localAudioStream);
-          analyserNode = audioContext.createAnalyser();
-          analyserNode.fftSize = 256;
-          source.connect(analyserNode);
-
-          const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
-          let wasSpeaking = false;
-
-          const checkSpeaking = () => {
-            if (!connectedVoiceChannel || !localAudioStream) return;
-            analyserNode.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i];
-            }
-            const average = sum / dataArray.length;
-            const speaking = !isMuted && average > 25;
-
-            if (micMeterFillEl) {
-              const meterPercent = isMuted ? 0 : Math.min(100, (average / 70) * 100);
-              micMeterFillEl.style.width = `${meterPercent}%`;
-            }
-
-            if (speaking !== wasSpeaking) {
-              wasSpeaking = speaking;
-              updateUserSpeakingUI(currentUser.id, speaking);
-              if (socket) {
-                socket.emit('voice:speaking', {
-                  channelId,
-                  userId: currentUser.id,
-                  speaking,
-                });
-              }
-            }
-            requestAnimationFrame(checkSpeaking);
-          };
-          checkSpeaking();
-        }
       }
     } catch (err) {
       console.error('[WebRTC Voice] Error capturing local microphone:', err);
@@ -3481,6 +3545,9 @@
   }
 
   function stopAudioCapture() {
+    if (window.SyncCordAudioPipeline) {
+      window.SyncCordAudioPipeline.stop();
+    }
     if (localAudioStream) {
       localAudioStream.getTracks().forEach((track) => track.stop());
       localAudioStream = null;
@@ -3524,12 +3591,14 @@
       chatHeaderTitleEl.innerHTML = `${escapeHtml(channel.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Canal de Voz</span>`;
       chatInputEl.placeholder = `Conversar em #${channel.name} (Chat de Voz)`;
       if (headerVoiceChatBtn) headerVoiceChatBtn.style.display = 'flex';
+      document.title = `${currentGuild ? currentGuild.name + ' - ' : ''}${channel.name} (Voz) | SyncCord`;
     } else {
       if (chatHeaderIconEl) chatHeaderIconEl.innerHTML = SVGS.HASH;
       chatHeaderTitleEl.textContent = channel.name;
       chatInputEl.placeholder = `Conversar em #${channel.name}`;
       if (headerVoiceChatBtn && !connectedVoiceChannel) headerVoiceChatBtn.style.display = 'none';
       if (!connectedVoiceChannel) closeVoiceChannelChat();
+      document.title = `${currentGuild ? currentGuild.name + ' - ' : ''}#${channel.name} | SyncCord`;
     }
 
     updateVoiceChatBanner();
@@ -4017,6 +4086,9 @@
   function toggleMic() {
     isMuted = !isMuted;
     updateAudioButtons();
+    if (window.SyncCordAudioPipeline) {
+      window.SyncCordAudioPipeline.setMuted(isMuted);
+    }
     if (localAudioStream) {
       localAudioStream.getAudioTracks().forEach((track) => {
         track.enabled = !isMuted;
@@ -4040,10 +4112,19 @@
     if (myState) myState.selfMute = isMuted;
     renderVoiceUsers();
     renderVoiceCallStage();
+
+    if (window.__desktopNotify) {
+      window.__desktopNotify('voice', {
+        isMuted,
+        isDeaf: isDeafened,
+        channelName: connectedVoiceChannel ? connectedVoiceChannel.name : '',
+      });
+    }
   }
 
   function toggleDeaf() {
     isDeafened = !isDeafened;
+    if (isDeafened) isMuted = true;
     updateAudioButtons();
     // Update all remote audio playback elements immediately
     remoteAudioElements.forEach((audioEl, uId) => {
@@ -4067,6 +4148,14 @@
     if (myState) myState.selfDeaf = isDeafened;
     renderVoiceUsers();
     renderVoiceCallStage();
+
+    if (window.__desktopNotify) {
+      window.__desktopNotify('voice', {
+        isMuted,
+        isDeaf: isDeafened,
+        channelName: connectedVoiceChannel ? connectedVoiceChannel.name : '',
+      });
+    }
   }
 
   // Expose audio toggles for native desktop client tray actions
@@ -4248,6 +4337,21 @@
     }
     if (closeSoundboardBtnEl) {
       closeSoundboardBtnEl.addEventListener('click', () => window.toggleSoundboard(false));
+    }
+
+    const dockBtnKrispEl = document.getElementById('dock-btn-krisp');
+    if (dockBtnKrispEl) {
+      dockBtnKrispEl.addEventListener('click', () => {
+        if (!window.SyncCordAudioSettings) return;
+        const current = window.SyncCordAudioSettings.get('noiseSuppression');
+        const next = !current;
+        window.SyncCordAudioSettings.set('noiseSuppression', next);
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ noiseSuppression: next });
+        }
+        dockBtnKrispEl.classList.toggle('active', next);
+        dockBtnKrispEl.title = next ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído (Desativada)';
+      });
     }
 
     if (dockBtnToggleChatEl) {
@@ -6013,10 +6117,20 @@
           </div>
         `;
 
-      case 'voice-video':
+      case 'voice-video': {
+        const audioSettings = window.SyncCordAudioSettings ? window.SyncCordAudioSettings.getAll() : {};
+        const isKrisp = audioSettings.noiseSuppression !== false;
+        const isAntiDucking = audioSettings.antiDucking !== false;
+        const isEchoCancel = !!audioSettings.echoCancellation;
+        const isAgc = !!audioSettings.autoGainControl;
+        const currentMode = audioSettings.noiseSuppressionMode || 'krisp';
+        const currentThreshold = typeof audioSettings.noiseGateThreshold === 'number' ? audioSettings.noiseGateThreshold : -45;
+
         return `
           <div class="settings-pane-title">${t('settings.voiceVideo')}</div>
           
+          <div id="settings-bluetooth-banner" style="display: none; background: rgba(88,101,242,0.15); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-bottom: 16px;"></div>
+
           <div class="settings-section-subtitle">DISPOSITIVOS DE ÁUDIO</div>
           <div class="settings-card">
             <div class="form-group" style="margin-bottom: 16px;">
@@ -6071,33 +6185,71 @@
             </div>
           </div>
 
-          <div class="settings-section-subtitle">PROCESSAMENTO DE VOZ AVANÇADO</div>
+          <div class="settings-section-subtitle">PROCESSAMENTO DE VOZ AVANÇADO (HEXAGONAL AUDIO ENGINE)</div>
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Supressão de Ruído Krisp</div>
-                <div class="discord-toggle-desc">Filtro baseado em inteligência artificial para eliminar ruídos de fundo como teclado e vento.</div>
+                <div class="discord-toggle-title">🛡️ Supressão de Ruído Krisp (AI & DSP)</div>
+                <div class="discord-toggle-desc">Filtro espectral e inteligente que elimina ruídos de fundo como ventiladores, teclado, cliques e eco de ambiente.</div>
+                <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
+                  <span style="font-size: 12px; color: var(--text-muted);">Algoritmo:</span>
+                  <select class="form-input" id="settings-krisp-mode" style="width: auto; padding: 4px 8px; font-size: 12px;">
+                    <option value="krisp" ${currentMode === 'krisp' ? 'selected' : ''}>SyncCord Krisp AI (Spectral Gate)</option>
+                    <option value="dsp" ${currentMode === 'dsp' ? 'selected' : ''}>Filtro DSP Padrão (Hum & Rumble Cut)</option>
+                    <option value="off" ${currentMode === 'off' ? 'selected' : ''}>Desativado</option>
+                  </select>
+                </div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="settings-toggle-krisp" ${isKrisp ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
+            </div>
+
+            <div style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-header);">Sensibilidade do Noise Gate</span>
+                <span id="settings-krisp-threshold-val" style="font-size: 12px; color: var(--accent); font-weight: 700;">${currentThreshold} dB</span>
+              </div>
+              <input type="range" id="settings-krisp-threshold" min="-60" max="-20" step="1" value="${currentThreshold}" style="width: 100%; accent-color: var(--accent); margin-top: 6px;" />
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Corta ruídos quando você não está falando. Valores baixos (-55dB) deixam passar sussurros; valores altos (-35dB) bloqueiam ruídos fortes.</div>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Cancelamento de Eco</div>
-                <div class="discord-toggle-desc">Impede que o áudio que sai do alto-falante seja recapturado pelo microfone.</div>
+                <div class="discord-toggle-title">🎧 Modo Anti-Abafamento (YouTube, Vídeos & Músicas)</div>
+                <div class="discord-toggle-desc">Impede que o Windows reduza o som em 80% ou abafe o áudio de vídeos do YouTube e músicas ao entrar em canais de voz. Mantém saída estúdio (48kHz estéreo).</div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="settings-toggle-anti-ducking" ${isAntiDucking ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
+            </div>
+
+            <div class="discord-toggle-row">
+              <div class="discord-toggle-info">
+                <div class="discord-toggle-title">Cancelamento de Eco (AEC)</div>
+                <div class="discord-toggle-desc">Impede recaptura por caixas de som abertas. <em>Dica: mantenha desativado se você usa fones de ouvido para preservar a máxima qualidade sonora!</em></div>
+              </div>
+              <label class="discord-switch">
+                <input type="checkbox" id="settings-toggle-echo-cancel" ${isEchoCancel ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Controle Automático de Ganho</div>
-                <div class="discord-toggle-desc">Equaliza automaticamente o volume da sua fala para que todos ouçam com clareza.</div>
+                <div class="discord-toggle-title">Controle Automático de Ganho (AGC)</div>
+                <div class="discord-toggle-desc">Equaliza e comprime suavemente picos de fala para manter seu volume estável.</div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="settings-toggle-agc" ${isAgc ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
             </div>
           </div>
         `;
+      }
 
       case 'text-images':
         return `
@@ -6463,6 +6615,87 @@
       outputSelect.value = selectedAudioOutputId;
       outputSelect.onchange = (e) => switchAudioOutput(e.target.value);
     }
+
+    refreshAudioDevices();
+
+    // Noise Suppression (Krisp / DSP) controls
+    const krispToggle = document.getElementById('settings-toggle-krisp');
+    const krispModeSelect = document.getElementById('settings-krisp-mode');
+    const krispThresholdInput = document.getElementById('settings-krisp-threshold');
+    const krispThresholdVal = document.getElementById('settings-krisp-threshold-val');
+
+    if (krispToggle) {
+      krispToggle.onchange = (e) => {
+        const val = e.target.checked;
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ noiseSuppression: val });
+        }
+        updateDockButtonsState();
+      };
+    }
+
+    if (krispModeSelect) {
+      krispModeSelect.onchange = (e) => {
+        const val = e.target.value;
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ noiseSuppressionMode: val });
+        }
+        if (krispToggle) krispToggle.checked = val !== 'off';
+        updateDockButtonsState();
+      };
+    }
+
+    if (krispThresholdInput) {
+      krispThresholdInput.oninput = (e) => {
+        const val = parseFloat(e.target.value);
+        if (krispThresholdVal) krispThresholdVal.textContent = `${val} dB`;
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ noiseGateThreshold: val });
+        }
+      };
+    }
+
+    // Anti-Ducking Studio Mode Toggle
+    const antiDuckingToggle = document.getElementById('settings-toggle-anti-ducking');
+    if (antiDuckingToggle) {
+      antiDuckingToggle.onchange = (e) => {
+        const val = e.target.checked;
+        if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('antiDucking', val);
+        }
+        if (connectedVoiceChannel) {
+          stopAudioCapture();
+          startAudioCapture(connectedVoiceChannel.id);
+        }
+      };
+    }
+
+    // Echo Cancellation Toggle
+    const echoCancelToggle = document.getElementById('settings-toggle-echo-cancel');
+    if (echoCancelToggle) {
+      echoCancelToggle.onchange = (e) => {
+        const val = e.target.checked;
+        if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('echoCancellation', val);
+        }
+        if (connectedVoiceChannel) {
+          stopAudioCapture();
+          startAudioCapture(connectedVoiceChannel.id);
+        }
+      };
+    }
+
+    // Automatic Gain Control Toggle
+    const agcToggle = document.getElementById('settings-toggle-agc');
+    if (agcToggle) {
+      agcToggle.onchange = (e) => {
+        const val = e.target.checked;
+        if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('autoGainControl', val);
+        }
+      };
+    }
+
     if (testSpeakerBtn) {
       testSpeakerBtn.onclick = () => {
         testSpeakerSound();
@@ -6472,11 +6705,21 @@
         }
       };
     }
+
     if (testMicBtn) {
       testMicBtn.onclick = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedAudioInputId } });
-          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              sampleRate: { ideal: 48000 },
+              channelCount: { ideal: 2 },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              deviceId: selectedAudioInputId !== 'default' ? { ideal: selectedAudioInputId } : undefined,
+            },
+          });
+          const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
           const src = ctx.createMediaStreamSource(stream);
           const an = ctx.createAnalyser();
           an.fftSize = 64;

@@ -1,6 +1,6 @@
 {
   "name": "synccord-monorepo",
-  "version": "1.0.0",
+  "version": "0.1.11",
   "description": "SyncCord - Production-Ready High Performance Chat & Voice Platform (SyncCord.cloud)",
   "private": true,
   "scripts": {
