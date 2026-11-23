@@ -4749,7 +4749,7 @@
     // Sync Mini Profile Flyout Popover
     const popoverBanner = document.getElementById('popover-banner');
     if (popoverBanner) {
-      popoverBanner.style.backgroundColor = currentUser.bannerColor || '#5865F2';
+      popoverBanner.style.background = currentUser.bannerColor || '#5865F2';
     }
 
     const popoverAvatar = document.getElementById('popover-avatar');
@@ -5452,17 +5452,48 @@
   }
   window.syncUserProfileAcrossApp = syncUserProfileAcrossApp;
 
+  function selectBannerGradient(grad, el) {
+    const valInput = document.getElementById('profile-banner-color-val');
+    if (valInput) valInput.value = grad;
+    if (currentUser) currentUser.bannerColor = grad;
+
+    document.querySelectorAll('.banner-gradient-pill').forEach((p) => p.classList.remove('active'));
+    if (el) el.classList.add('active');
+
+    document.querySelectorAll('.settings-profile-banner').forEach((b) => {
+      b.style.background = grad;
+    });
+    const popoverBanner = document.getElementById('popover-banner');
+    if (popoverBanner) popoverBanner.style.background = grad;
+  }
+  window.selectBannerGradient = selectBannerGradient;
+
+  function handleBannerSolidColorChange(hex) {
+    const valInput = document.getElementById('profile-banner-color-val');
+    if (valInput) valInput.value = hex;
+    if (currentUser) currentUser.bannerColor = hex;
+
+    document.querySelectorAll('.banner-gradient-pill').forEach((p) => p.classList.remove('active'));
+    document.querySelectorAll('.settings-profile-banner').forEach((b) => {
+      b.style.background = hex;
+    });
+    const popoverBanner = document.getElementById('popover-banner');
+    if (popoverBanner) popoverBanner.style.background = hex;
+  }
+  window.handleBannerSolidColorChange = handleBannerSolidColorChange;
+
   async function executeSaveProfile() {
     if (!currentUser) return;
     const nameInput = document.getElementById('profile-display-name');
     const pronounsInput = document.getElementById('profile-pronouns');
     const bioInput = document.getElementById('profile-bio');
     const bannerColorInput = document.getElementById('profile-banner-color');
+    const bannerColorValInput = document.getElementById('profile-banner-color-val');
 
     const newName = nameInput ? nameInput.value.trim() : currentUser.username;
     const newPronouns = pronounsInput ? pronounsInput.value.trim() : '';
     const newBio = bioInput ? bioInput.value.trim() : '';
-    const newBannerColor = bannerColorInput ? bannerColorInput.value : '#5865f2';
+    const newBannerColor = bannerColorValInput?.value || (bannerColorInput ? bannerColorInput.value : '#5865f2');
 
     const avatarToSave = pendingAvatarData !== null ? (pendingAvatarData === '' ? null : pendingAvatarData) : currentUser.avatar;
 
@@ -5821,12 +5852,45 @@
               </div>
             </div>
 
-            <!-- Banner Color Picker -->
-            <div class="form-group" style="margin-bottom: 8px;">
-              <label class="form-label">${t('profiles.bannerColor')}</label>
-              <div style="display: flex; align-items: center; gap: 14px;">
-                <input type="color" id="profile-banner-color" value="${escapeHtml(currentUser?.bannerColor || '#FF0031')}" style="border: 1px solid var(--tag-border); width: 48px; height: 38px; border-radius: 8px; cursor: pointer; background: transparent;" />
-                <span style="font-size: 13px; font-family: var(--font-mono); color: var(--tag-concrete);">${t('profiles.bannerColorDesc')}</span>
+            <!-- Banner Color & Gradient Options -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label">${t('profiles.bannerColor')} // BANNER COLOR &amp; GRADIENTS</label>
+              
+              <!-- Hidden input to hold current chosen banner style (hex or linear-gradient) -->
+              <input type="hidden" id="profile-banner-color-val" value="${escapeHtml(currentUser?.bannerColor || 'linear-gradient(135deg, #7c3aed, #c084fc)')}" />
+
+              <div style="margin-bottom: 10px; font-size: 12px; font-family: var(--font-mono); color: var(--tag-concrete);">
+                ESCOLHA UMA OPÇÃO EM GRADIENTE OU DEFINA UMA COR SÓLIDA:
+              </div>
+
+              <!-- Gradient Preset Swatches Grid -->
+              <div class="banner-gradient-presets" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+                ${[
+                  { grad: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: 'Lilás & Roxo' },
+                  { grad: 'linear-gradient(135deg, #4c1d95, #9333ea, #f472b6)', name: 'Ciber Violeta' },
+                  { grad: 'linear-gradient(135deg, #240046, #7c3aed, #d8b4fe)', name: 'Ametista Neon' },
+                  { grad: 'linear-gradient(135deg, #090314, #4c1d95, #a855f7)', name: 'Abismo Púrpura' },
+                  { grad: 'linear-gradient(135deg, #c084fc, #e9d5ff, #f472b6)', name: 'Lilás Floral' },
+                  { grad: 'linear-gradient(135deg, #00b0f4, #818cf8, #c084fc)', name: 'Aurora Neon' },
+                  { grad: 'linear-gradient(135deg, #ff0031, #7928ca)', name: 'Cyberpunk' },
+                  { grad: 'linear-gradient(135deg, #18191c, #2f3136)', name: 'Meia-noite' },
+                ].map((g) => `
+                  <div class="banner-gradient-pill ${(currentUser?.bannerColor || '').toLowerCase() === g.grad.toLowerCase() ? 'active' : ''}" 
+                       style="background: ${g.grad}; cursor: pointer; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.8); border: 2px solid transparent; transition: all 0.15s ease;"
+                       title="${g.name}"
+                       onclick="selectBannerGradient('${g.grad}', this)">
+                    ${g.name}
+                  </div>
+                `).join('')}
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 14px; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px;">
+                <input type="color" id="profile-banner-color" value="${escapeHtml(currentUser?.bannerColor?.startsWith('#') ? currentUser.bannerColor : '#7c3aed')}" 
+                       onchange="handleBannerSolidColorChange(this.value)"
+                       style="border: 1px solid var(--tag-border); width: 44px; height: 34px; border-radius: 6px; cursor: pointer; background: transparent;" />
+                <span style="font-size: 12.5px; font-family: var(--font-mono); color: var(--tag-concrete);">
+                  Ou escolha uma cor sólida personalizada
+                </span>
               </div>
             </div>
           </div>
@@ -6138,7 +6202,7 @@
           { id: 'forest', name: 'Floresta', previewClass: 'theme-preview-forest', previewText: 'Floresta' },
         ];
 
-        const accentList = [
+        const solidAccentList = [
           { color: '#5865f2', name: 'Blurple' },
           { color: '#23a55a', name: 'Esmeralda' },
           { color: '#f23f43', name: 'Coral' },
@@ -6147,7 +6211,16 @@
           { color: '#eb459e', name: 'Magenta' },
         ];
 
-        const activeAccentObj = accentList.find((a) => a.color.toLowerCase() === pendingAppearanceAccent.toLowerCase());
+        const gradientAccentList = [
+          { color: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: 'Lilás & Roxo', solid: '#7c3aed' },
+          { color: 'linear-gradient(135deg, #9333ea, #f472b6)', name: 'Violeta & Rosa', solid: '#9333ea' },
+          { color: 'linear-gradient(135deg, #4c1d95, #a855f7)', name: 'Ametista Neon', solid: '#8b5cf6' },
+          { color: 'linear-gradient(135deg, #00b0f4, #818cf8)', name: 'Aurora Ciano', solid: '#00b0f4' },
+          { color: 'linear-gradient(135deg, #f0b232, #eb459e)', name: 'Pôr do Sol Ciber', solid: '#f0b232' },
+        ];
+
+        const allAccents = [...solidAccentList, ...gradientAccentList];
+        const activeAccentObj = allAccents.find((a) => a.color.toLowerCase() === pendingAppearanceAccent.toLowerCase());
         const activeAccentName = activeAccentObj ? activeAccentObj.name : 'Personalizada';
 
         return `
@@ -6163,19 +6236,32 @@
             `).join('')}
           </div>
 
-          <div class="settings-section-subtitle">CORES DE DESTAQUE</div>
-          <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 24px; padding: 14px 18px; background-color: var(--bg-secondary); border-radius: 8px;">
-            ${accentList.map((a) => `
+          <div class="settings-section-subtitle">CORES DE DESTAQUE // SÓLIDAS</div>
+          <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 18px; padding: 14px 18px; background-color: var(--bg-secondary); border-radius: 8px; flex-wrap: wrap;">
+            ${solidAccentList.map((a) => `
               <div class="accent-color-circle ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? 'active' : ''}" 
-                   id="accent-circle-${a.name.toLowerCase()}" 
-                   style="background-color: ${a.color};" 
+                   id="accent-circle-${a.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}" 
+                   style="background: ${a.color};" 
                    title="${a.name} (${a.color})"
-                   onclick="selectAccentColor('${a.color}')">
+                   onclick="selectAccentColor('${a.color}', '${a.name}')">
                 ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' : ''}
               </div>
             `).join('')}
-            <div style="font-size: 13px; color: var(--text-muted); margin-left: 8px;">
-              Cor Selecionada: <strong id="current-accent-label" style="color: var(--text-header);">${activeAccentName}</strong>
+          </div>
+
+          <div class="settings-section-subtitle">OPÇÕES EM GRADIENTE // NEXT-GEN</div>
+          <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 24px; padding: 14px 18px; background-color: var(--bg-secondary); border-radius: 8px; flex-wrap: wrap;">
+            ${gradientAccentList.map((a) => `
+              <div class="accent-color-circle gradient ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? 'active' : ''}" 
+                   id="accent-circle-${a.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}" 
+                   style="background: ${a.color};" 
+                   title="${a.name}"
+                   onclick="selectAccentColor('${a.color}', '${a.name}')">
+                ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' : ''}
+              </div>
+            `).join('')}
+            <div style="font-size: 13px; color: var(--text-muted); margin-left: 10px;">
+              Destaque Ativo: <strong id="current-accent-label" style="color: var(--text-header);">${activeAccentName}</strong>
             </div>
           </div>
 
@@ -6898,18 +6984,24 @@
   }
   window.selectAppearanceTheme = selectAppearanceTheme;
 
-  function selectAccentColor(color) {
+  function selectAccentColor(color, name) {
     pendingAppearanceAccent = color;
-    const accents = [
+    const allAccents = [
       { color: '#5865f2', name: 'Blurple' },
       { color: '#23a55a', name: 'Esmeralda' },
       { color: '#f23f43', name: 'Coral' },
       { color: '#f0b232', name: 'Âmbar' },
       { color: '#00b0f4', name: 'Ciano' },
       { color: '#eb459e', name: 'Magenta' },
+      { color: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: 'Lilás & Roxo' },
+      { color: 'linear-gradient(135deg, #9333ea, #f472b6)', name: 'Violeta & Rosa' },
+      { color: 'linear-gradient(135deg, #4c1d95, #a855f7)', name: 'Ametista Neon' },
+      { color: 'linear-gradient(135deg, #00b0f4, #818cf8)', name: 'Aurora Ciano' },
+      { color: 'linear-gradient(135deg, #f0b232, #eb459e)', name: 'Pôr do Sol Ciber' },
     ];
-    accents.forEach((a) => {
-      const circle = document.getElementById(`accent-circle-${a.name.toLowerCase()}`);
+    allAccents.forEach((a) => {
+      const circleId = `accent-circle-${a.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+      const circle = document.getElementById(circleId);
       if (circle) {
         if (a.color.toLowerCase() === color.toLowerCase()) {
           circle.classList.add('active');
@@ -6922,7 +7014,7 @@
     });
     const label = document.getElementById('current-accent-label');
     if (label) {
-      label.textContent = accents.find((a) => a.color.toLowerCase() === color.toLowerCase())?.name || color;
+      label.textContent = name || allAccents.find((a) => a.color.toLowerCase() === color.toLowerCase())?.name || color;
     }
   }
   window.selectAccentColor = selectAccentColor;
@@ -6933,19 +7025,34 @@
     pendingAppearanceTheme = currentTheme;
     pendingAppearanceAccent = currentAccentColor;
 
+    let solidFallback = currentAccentColor;
+    if (currentAccentColor.startsWith('linear-gradient')) {
+      const match = currentAccentColor.match(/#(?:[0-9a-fA-F]{3}){1,2}/);
+      solidFallback = match ? match[0] : '#7c3aed';
+    }
+
     document.documentElement.setAttribute('data-theme', currentTheme);
     document.body.setAttribute('data-theme', currentTheme);
     document.documentElement.style.setProperty('--accent', currentAccentColor);
-    document.documentElement.style.setProperty('--accent-hover', adjustColorBrightness(currentAccentColor, -15));
+    document.documentElement.style.setProperty('--accent-solid', solidFallback);
+    if (currentAccentColor.startsWith('linear-gradient')) {
+      document.documentElement.style.setProperty('--accent-hover', currentAccentColor);
+    } else {
+      document.documentElement.style.setProperty('--accent-hover', adjustColorBrightness(currentAccentColor, -15));
+    }
   }
   window.applyAppearanceSettings = applyAppearanceSettings;
 
   function adjustColorBrightness(hex, percent) {
+    if (!hex || typeof hex !== 'string' || hex.startsWith('linear-gradient')) {
+      return hex || '#5865f2';
+    }
     let cleanHex = hex.replace('#', '');
     if (cleanHex.length === 3) {
       cleanHex = cleanHex.split('').map((c) => c + c).join('');
     }
     const num = parseInt(cleanHex, 16);
+    if (isNaN(num)) return hex;
     let r = (num >> 16) + percent;
     let g = ((num >> 8) & 0x00ff) + percent;
     let b = (num & 0x0000ff) + percent;

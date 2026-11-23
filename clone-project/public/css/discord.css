@@ -162,13 +162,13 @@ body, html {
 
 .guild-icon:hover {
   border-radius: 16px;
-  background-color: var(--accent);
+  background: var(--accent);
   color: white;
 }
 
 .guild-icon.active {
   border-radius: 16px;
-  background-color: var(--accent);
+  background: var(--accent);
   color: white;
 }
 
@@ -346,7 +346,7 @@ body, html {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background-color: var(--accent);
+  background: var(--accent);
   color: white;
   font-size: 10px;
   font-weight: 700;
@@ -743,7 +743,7 @@ body, html {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: var(--accent);
+  background: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -876,7 +876,7 @@ body, html {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--accent);
+  background: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1440,6 +1440,74 @@ body, html {
   color: #d8b4fe;
   letter-spacing: 1.2px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+/* 3D INTRO GRADIENT THEME SELECTOR */
+.intro-gradient-selector {
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 7, 36, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  padding: 6px 14px;
+  border-radius: 24px;
+  margin-top: 4px;
+  z-index: 15;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.intro-gradient-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: #d8b4fe;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.intro-gradient-pill {
+  pointer-events: auto !important;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: #e9d5ff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.intro-gradient-pill:hover {
+  background: rgba(168, 85, 247, 0.25);
+  color: #ffffff;
+  border-color: rgba(192, 132, 252, 0.6);
+  transform: translateY(-1px);
+}
+
+.intro-gradient-pill.active {
+  background: rgba(168, 85, 247, 0.4);
+  color: #ffffff;
+  border-color: #c084fc;
+  box-shadow: 0 0 14px rgba(192, 132, 252, 0.55);
+  font-weight: 700;
+}
+
+.intro-gradient-pill .pill-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.8);
 }
 
 /* AUTH MODAL STYLED AS FROSTED GLASS OVER 3D PURPLE CANVAS */
@@ -3219,6 +3287,33 @@ body, html {
   border-color: #ffffff;
   transform: scale(1.12);
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+}
+
+.accent-color-circle.gradient {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.accent-color-circle.gradient.active {
+  border-color: #ffffff !important;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.65), 0 0 22px rgba(192, 132, 252, 0.5) !important;
+}
+
+/* PROFILE BANNER GRADIENT PRESET PILLS */
+.banner-gradient-pill {
+  border: 2px solid transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.banner-gradient-pill:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.banner-gradient-pill.active {
+  border-color: #ffffff !important;
+  box-shadow: 0 0 16px rgba(192, 132, 252, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+  transform: scale(1.03);
 }
 
 /* PASSWORD TOGGLE EYE & WRAPPER */
