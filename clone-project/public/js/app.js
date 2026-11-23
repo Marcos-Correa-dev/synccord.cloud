@@ -957,19 +957,29 @@
 
   function handleVoiceStateUpdate(state) {
     if (!state.channelId) {
+      const wasInOurChannel = connectedVoiceChannel && voiceStates.some((s) => (s.user?.id === state.userId || s.userId === state.userId) && s.channelId === connectedVoiceChannel.id);
       voiceStates = voiceStates.filter((s) => s.user.id !== state.userId);
       removeAllUserStreams(state.userId);
       closePeerConnection(state.userId);
       renderVideoGrid();
       if (currentUser && state.userId === currentUser.id && connectedVoiceChannel) {
         handleVoiceDisconnectedUI();
+      } else if (wasInOurChannel && (!currentUser || state.userId !== currentUser.id)) {
+        playVoiceLeaveSound(false);
       }
     } else {
+      const prev = voiceStates.find((s) => s.user.id === state.user.id);
+      const isNewInOurChannel = connectedVoiceChannel && state.channelId === connectedVoiceChannel.id && (!prev || prev.channelId !== connectedVoiceChannel.id);
+
       const idx = voiceStates.findIndex((s) => s.user.id === state.user.id);
       if (idx >= 0) {
         voiceStates[idx] = { ...voiceStates[idx], ...state };
       } else {
         voiceStates.push(state);
+      }
+
+      if (isNewInOurChannel && (!currentUser || state.user.id !== currentUser.id)) {
+        playVoiceJoinSound();
       }
 
       // When another user is in or joins our voice channel, establish WebRTC peer connection
@@ -2310,6 +2320,7 @@
     }
 
     connectedVoiceChannel = channel;
+    playVoiceJoinSound();
 
     if (socket) {
       socket.emit('voice:join', {
@@ -2348,6 +2359,8 @@
   // Leave Voice Channel
   function leaveVoiceChannel(updateGateway = true) {
     if (!connectedVoiceChannel) return;
+
+    playVoiceLeaveSound(true);
 
     if (window.__desktopNotify) {
       window.__desktopNotify('voice', {
@@ -2533,6 +2546,19 @@
           osc.start(ctx.currentTime + i * 0.12);
           osc.stop(ctx.currentTime + i * 0.12 + 0.3);
         });
+      } else if (soundKey === 'leave') {
+        [880, 587.33].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + i * 0.12);
+          osc.stop(ctx.currentTime + i * 0.12 + 0.3);
+        });
       } else {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -2549,6 +2575,49 @@
       console.warn('Web Audio error:', err);
     }
   }
+
+  // Discord Official Voice In & Out Sounds (Real MP3 assets + Web Audio fallback)
+  const VOICE_JOIN_SOUND_URL = '/sounds/voice_join.mp3';
+  const VOICE_LEAVE_SOUND_URL = '/sounds/voice_leave.mp3';
+  const VOICE_DISCONNECT_SOUND_URL = '/sounds/voice_disconnect.mp3';
+
+  function playVoiceJoinSound() {
+    try {
+      const audio = new Audio(VOICE_JOIN_SOUND_URL);
+      audio.volume = 0.55;
+      const playPromise = audio.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(() => synthesizeSound('join'));
+      }
+    } catch (e) {
+      synthesizeSound('join');
+    }
+    // Notify native Rust desktop client via IPC
+    if (window.ipc && typeof window.ipc.postMessage === 'function') {
+      try { window.ipc.postMessage('voice:join'); } catch (e) {}
+    }
+  }
+
+  function playVoiceLeaveSound(isSelfDisconnect = false) {
+    try {
+      const soundFile = isSelfDisconnect ? VOICE_DISCONNECT_SOUND_URL : VOICE_LEAVE_SOUND_URL;
+      const audio = new Audio(soundFile);
+      audio.volume = 0.55;
+      const playPromise = audio.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(() => synthesizeSound('leave'));
+      }
+    } catch (e) {
+      synthesizeSound('leave');
+    }
+    // Notify native Rust desktop client via IPC
+    if (window.ipc && typeof window.ipc.postMessage === 'function') {
+      try { window.ipc.postMessage('voice:leave'); } catch (e) {}
+    }
+  }
+
+  window.playVoiceJoinSound = playVoiceJoinSound;
+  window.playVoiceLeaveSound = playVoiceLeaveSound;
 
   function triggerFloatingReaction(userId, emoji) {
     const overlay = document.getElementById(`reaction-overlay-${userId}`);
@@ -3569,11 +3638,325 @@
     }
   }
 
+  // =========================================================================
+  // MESSAGE FORMATTING, CLIPBOARD COPY & RICH LINK PREVIEWS (DISCORD STYLE)
+  // =========================================================================
+
+  const linkPreviewCache = new Map();
+
+  function formatMessageAndLinks(rawContent) {
+    if (!rawContent) return { formattedHtml: '', urls: [] };
+
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
+    const urls = [];
+    let m;
+    while ((m = urlRegex.exec(rawContent)) !== null) {
+      urls.push(m[1]);
+    }
+
+    const escaped = escapeHtml(rawContent);
+    const formattedHtml = escaped.replace(/(https?:\/\/[^\s<>"']+)/gi, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="discord-message-link">${url}</a>`;
+    });
+
+    return { formattedHtml, urls };
+  }
+
+  function copyMessageText(content, btnElement) {
+    if (!content) return;
+    const onSuccess = () => {
+      if (btnElement) {
+        const oldHtml = btnElement.innerHTML;
+        btnElement.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+          </svg>
+          <span>Copiado!</span>
+        `;
+        btnElement.classList.add('copied');
+        setTimeout(() => {
+          btnElement.innerHTML = oldHtml;
+          btnElement.classList.remove('copied');
+        }, 2000);
+      }
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(content).then(onSuccess).catch(() => fallbackCopy(content, onSuccess));
+    } else {
+      fallbackCopy(content, onSuccess);
+    }
+  }
+
+  function fallbackCopy(text, callback) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      if (typeof callback === 'function') callback();
+    } catch (e) {
+      console.warn('Fallback copy failed:', e);
+    }
+    ta.remove();
+  }
+
+  function renderLinkPreviews(container, urls) {
+    if (!container || !urls || urls.length === 0) return;
+    const uniqueUrls = [...new Set(urls)].slice(0, 2);
+
+    uniqueUrls.forEach((url) => {
+      // 1. Direct Image
+      if (/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url)) {
+        const imgEmbed = document.createElement('div');
+        imgEmbed.className = 'discord-embed-image';
+        imgEmbed.innerHTML = `
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapeHtml(url)}" alt="Imagem anexada" loading="lazy" />
+          </a>
+        `;
+        container.appendChild(imgEmbed);
+        return;
+      }
+
+      // 2. YouTube Video
+      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_\-]{11})/i);
+      if (ytMatch && ytMatch[1]) {
+        const ytId = ytMatch[1];
+        const ytEmbed = document.createElement('div');
+        ytEmbed.className = 'discord-embed-youtube';
+        ytEmbed.innerHTML = `
+          <iframe
+            src="https://www.youtube.com/embed/${ytId}"
+            title="YouTube video player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+            loading="lazy">
+          </iframe>
+        `;
+        container.appendChild(ytEmbed);
+        return;
+      }
+
+      // 3. Web Page / OpenGraph preview via backend API
+      if (linkPreviewCache.has(url)) {
+        const cached = linkPreviewCache.get(url);
+        if (cached) renderEmbedCard(container, cached);
+        return;
+      }
+
+      api(`/preview?url=${encodeURIComponent(url)}`).then((data) => {
+        if (!data || !data.success) {
+          linkPreviewCache.set(url, null);
+          return;
+        }
+        linkPreviewCache.set(url, data);
+        renderEmbedCard(container, data);
+      }).catch(() => {
+        linkPreviewCache.set(url, null);
+      });
+    });
+  }
+
+  function renderEmbedCard(container, data) {
+    if (!data || (!data.title && !data.description && !data.image)) return;
+    const card = document.createElement('div');
+    card.className = 'discord-embed';
+    if (data.themeColor) {
+      card.style.borderLeftColor = data.themeColor;
+    }
+
+    card.innerHTML = `
+      ${data.siteName ? `<div class="discord-embed-provider">${escapeHtml(data.siteName)}</div>` : ''}
+      ${data.title ? `<a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer" class="discord-embed-title">${escapeHtml(data.title)}</a>` : ''}
+      ${data.description ? `<div class="discord-embed-desc">${escapeHtml(data.description)}</div>` : ''}
+      ${data.image ? `
+        <div class="discord-embed-thumbnail-wrapper">
+          <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapeHtml(data.image)}" class="discord-embed-thumbnail" alt="Preview da página" loading="lazy" onerror="this.parentElement.remove()" />
+          </a>
+        </div>
+      ` : ''}
+    `;
+
+    container.appendChild(card);
+  }
+
+  let activeMessageContextMenu = null;
+
+  function closeMessageContextMenu() {
+    if (activeMessageContextMenu) {
+      activeMessageContextMenu.remove();
+      activeMessageContextMenu = null;
+    }
+    document.removeEventListener('click', closeMessageContextMenu);
+  }
+
+  function openMessageContextMenu(e, content, messageId) {
+    if (e && e.preventDefault) e.preventDefault();
+    closeMessageContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+    if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '220px';
+    menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
+    menu.style.top = `${Math.min(e.clientY, window.innerHeight - 150)}px`;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" id="msg-ctx-copy-text">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+          <span>Copiar Texto</span>
+        </div>
+        <span style="font-size: 11px; color: var(--text-muted);">Ctrl+C</span>
+      </div>
+      <div class="context-menu-item" id="msg-ctx-copy-link">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+          </svg>
+          <span>Copiar Link da Mensagem</span>
+        </div>
+      </div>
+    `;
+
+    menu.querySelector('#msg-ctx-copy-text').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      copyMessageText(content);
+      closeMessageContextMenu();
+    });
+
+    menu.querySelector('#msg-ctx-copy-link').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const channelId = currentChannel?.id || activeVoiceChatChannel?.id || '';
+      const msgUrl = `${window.location.origin}/channels/${currentGuild?.id || '@me'}/${channelId}?message=${messageId || ''}`;
+      copyMessageText(msgUrl);
+      closeMessageContextMenu();
+    });
+
+    document.body.appendChild(menu);
+    activeMessageContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeMessageContextMenu);
+    }, 10);
+  }
+
+  let activeInputContextMenu = null;
+
+  function closeInputContextMenu() {
+    if (activeInputContextMenu) {
+      activeInputContextMenu.remove();
+      activeInputContextMenu = null;
+    }
+    document.removeEventListener('click', closeInputContextMenu);
+  }
+
+  function openInputContextMenu(e, inputEl) {
+    if (e && e.preventDefault) e.preventDefault();
+    closeInputContextMenu();
+    closeMessageContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '190px';
+    menu.style.left = `${Math.min(e.clientX, window.innerWidth - 200)}px`;
+    menu.style.top = `${Math.min(e.clientY, window.innerHeight - 200)}px`;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" id="input-ctx-paste">
+        <span>📋 Colar</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Ctrl+V</span>
+      </div>
+      <div class="context-menu-item" id="input-ctx-copy">
+        <span>📄 Copiar</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Ctrl+C</span>
+      </div>
+      <div class="context-menu-item" id="input-ctx-cut">
+        <span>✂️ Recortar</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Ctrl+X</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" id="input-ctx-select-all">
+        <span>🔤 Selecionar Tudo</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Ctrl+A</span>
+      </div>
+    `;
+
+    menu.querySelector('#input-ctx-paste').addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      closeInputContextMenu();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          const start = inputEl.selectionStart || 0;
+          const end = inputEl.selectionEnd || 0;
+          const val = inputEl.value;
+          inputEl.value = val.substring(0, start) + text + val.substring(end);
+          inputEl.selectionStart = inputEl.selectionEnd = start + text.length;
+          inputEl.focus();
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch (err) {
+        inputEl.focus();
+        document.execCommand('paste');
+      }
+    });
+
+    menu.querySelector('#input-ctx-copy').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeInputContextMenu();
+      const start = inputEl.selectionStart || 0;
+      const end = inputEl.selectionEnd || 0;
+      const selected = inputEl.value.substring(start, end);
+      copyMessageText(selected || inputEl.value);
+      inputEl.focus();
+    });
+
+    menu.querySelector('#input-ctx-cut').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeInputContextMenu();
+      const start = inputEl.selectionStart || 0;
+      const end = inputEl.selectionEnd || 0;
+      const selected = inputEl.value.substring(start, end);
+      if (selected) {
+        copyMessageText(selected);
+        inputEl.value = inputEl.value.substring(0, start) + inputEl.value.substring(end);
+        inputEl.selectionStart = inputEl.selectionEnd = start;
+        inputEl.focus();
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+
+    menu.querySelector('#input-ctx-select-all').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeInputContextMenu();
+      inputEl.select();
+      inputEl.focus();
+    });
+
+    document.body.appendChild(menu);
+    activeInputContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeInputContextMenu);
+    }, 10);
+  }
+
   function appendMessage(msg) {
     const el = document.createElement('div');
     el.className = 'message-item';
     const authorId = msg.authorId || msg.author_id;
     if (authorId) el.setAttribute('data-author-id', authorId);
+    if (msg.id) el.setAttribute('data-message-id', msg.id);
 
     const isMine = currentUser && authorId === currentUser.id;
     const member = guildMembers ? guildMembers.find((m) => m.id === authorId) : null;
@@ -3592,16 +3975,42 @@
     const timeRaw = msg.createdAt || msg.timestamp;
     const timeStr = timeRaw ? new Date(timeRaw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Agora';
 
+    const rawContent = msg.content || '';
+    el.setAttribute('data-raw-content', rawContent);
+    const { formattedHtml, urls } = formatMessageAndLinks(rawContent);
+
     el.innerHTML = `
+      <div class="message-actions-bar">
+        <button class="message-action-btn copy-msg-btn" title="Copiar Mensagem">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+          <span>Copiar</span>
+        </button>
+      </div>
       ${authorAvatar ? `<img src="${authorAvatar}" class="message-avatar" style="object-fit: cover; border-radius: 50%; width: 40px; height: 40px;" />` : `<div class="message-avatar">${initials}</div>`}
       <div class="message-content-wrapper">
         <div class="message-header">
           <span class="author-name">${authorName}</span>
           <span class="message-time">${timeStr}</span>
         </div>
-        <div class="message-text">${escapeHtml(msg.content)}</div>
+        <div class="message-text">${formattedHtml}</div>
+        <div class="message-previews-container"></div>
       </div>
     `;
+
+    const copyBtn = el.querySelector('.copy-msg-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        copyMessageText(rawContent, copyBtn);
+      });
+    }
+
+    const previewsContainer = el.querySelector('.message-previews-container');
+    if (previewsContainer && urls.length > 0) {
+      renderLinkPreviews(previewsContainer, urls);
+    }
 
     chatMessagesEl.appendChild(el);
     scrollToBottom();
@@ -4026,6 +4435,24 @@
         }
       });
     }
+
+    // Global context menu delegation for all input fields & textareas across the entire project
+    document.addEventListener('contextmenu', (e) => {
+      const target = e.target;
+      if (target.matches('input[type="text"], input:not([type]), textarea, .form-input, .chat-input, .voice-chat-sidebar-input')) {
+        openInputContextMenu(e, target);
+        return;
+      }
+
+      // Global context menu delegation for all messages (main chat & voice lounge chat, current & future)
+      const msgItem = target.closest('.message-item, .voice-message-item');
+      if (msgItem && !target.closest('input, textarea, button, a, select')) {
+        const rawText = msgItem.getAttribute('data-raw-content') || msgItem.querySelector('.message-text')?.innerText || '';
+        const msgId = msgItem.getAttribute('data-message-id') || msgItem.getAttribute('data-msg-id');
+        openMessageContextMenu(e, rawText, msgId);
+        return;
+      }
+    });
 
     // Confirmation Action Modal Buttons
     const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel-btn');
@@ -4548,7 +4975,19 @@
     if (msg.id) item.setAttribute('data-msg-id', msg.id);
     if (authorId) item.setAttribute('data-author-id', authorId);
 
+    const rawContent = msg.content || '';
+    item.setAttribute('data-raw-content', rawContent);
+    const { formattedHtml, urls } = formatMessageAndLinks(rawContent);
+
     item.innerHTML = `
+      <div class="message-actions-bar">
+        <button class="message-action-btn copy-msg-btn" title="Copiar Mensagem">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+          <span>Copiar</span>
+        </button>
+      </div>
       <div class="message-avatar" style="width: 32px; height: 32px; font-size: 11px; flex-shrink: 0; background-color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; overflow: hidden;">
         ${authorAvatar ? `<img src="${authorAvatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" />` : initials}
       </div>
@@ -4557,9 +4996,23 @@
           <span class="message-author" style="font-size: 13px; font-weight: 600; color: var(--text-header);">${authorName}</span>
           <span class="message-timestamp" style="font-size: 10px; color: var(--text-muted);">${time}</span>
         </div>
-        <div class="message-text" style="font-size: 13px; margin-top: 2px; color: var(--text-normal); word-break: break-word;">${escapeHtml(msg.content)}</div>
+        <div class="message-text" style="font-size: 13px; margin-top: 2px; color: var(--text-normal); word-break: break-word;">${formattedHtml}</div>
+        <div class="message-previews-container"></div>
       </div>
     `;
+
+    const copyBtn = item.querySelector('.copy-msg-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        copyMessageText(rawContent, copyBtn);
+      });
+    }
+
+    const previewsContainer = item.querySelector('.message-previews-container');
+    if (previewsContainer && urls.length > 0) {
+      renderLinkPreviews(previewsContainer, urls);
+    }
     container.appendChild(item);
     container.scrollTop = container.scrollHeight;
   }

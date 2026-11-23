@@ -273,8 +273,8 @@ fn main() {
     let init_script = r#"
         window.__IS_NATIVE_DESKTOP__ = true;
         window.__DESKTOP_PLATFORM__ = 'rust-wry';
-        window.__DESKTOP_VERSION__ = '0.1.11';
-        console.log('[SyncCord Desktop v0.1.11] Rust native client initialized (Wry / Tao / WebView2).');
+        window.__DESKTOP_VERSION__ = '0.1.13';
+        console.log('[SyncCord Desktop v0.1.13] Rust native client initialized (Wry / Tao / WebView2).');
 
         // Bidirectional IPC Bridge to Rust Native Host
         window.__desktopNotify = function(type, payload) {
@@ -360,7 +360,11 @@ fn main() {
         })
         .with_ipc_handler(move |request| {
             let msg = request.body();
-            if let Some(rest) = msg.strip_prefix("title:") {
+            if msg == "voice:join" {
+                println!("[SyncCord Desktop Audio] Usuário conectou ao canal de voz");
+            } else if msg == "voice:leave" {
+                println!("[SyncCord Desktop Audio] Usuário desconectou do canal de voz");
+            } else if let Some(rest) = msg.strip_prefix("title:") {
                 let _ = proxy_ipc.send_event(AppEvent::UpdateTitle(rest.to_string()));
             } else if let Some(rest) = msg.strip_prefix("voice:") {
                 let mut is_muted = false;
