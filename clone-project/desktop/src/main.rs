@@ -131,11 +131,29 @@ fn main() {
                 window.location.reload();
             }
         });
+
+        // Ensure audio autoplay permissions in desktop webview
+        document.addEventListener('click', () => {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx && window.__audioContext && window.__audioContext.state === 'suspended') {
+                window.__audioContext.resume().catch(() => {});
+            }
+        }, { once: true });
     "#;
 
     let webview = WebViewBuilder::new()
         .with_url(&synccord_url)
         .with_devtools(true)
+        .with_autoplay(true)
+        .with_ipc_handler(|req| {
+            let body = req.body();
+            println!("[SyncCord Desktop Native IPC] Recebido: {}", body);
+            if body == "voice:join" {
+                println!("[SyncCord Desktop Audio] Usuário conectou ao canal de voz");
+            } else if body == "voice:leave" {
+                println!("[SyncCord Desktop Audio] Usuário desconectou do canal de voz");
+            }
+        })
         .with_initialization_script(init_script)
         .build(&window)
         .expect("Failed to initialize WebView2");
