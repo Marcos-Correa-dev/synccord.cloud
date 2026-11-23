@@ -273,8 +273,8 @@ fn main() {
     let init_script = r#"
         window.__IS_NATIVE_DESKTOP__ = true;
         window.__DESKTOP_PLATFORM__ = 'rust-wry';
-        window.__DESKTOP_VERSION__ = '0.1.11';
-        console.log('[SyncCord Desktop v0.1.11] Rust native client initialized (Wry / Tao / WebView2).');
+        window.__DESKTOP_VERSION__ = '0.1.13';
+        console.log('[SyncCord Desktop v0.1.13] Rust native client initialized (Wry / Tao / WebView2).');
 
         // Bidirectional IPC Bridge to Rust Native Host
         window.__desktopNotify = function(type, payload) {
