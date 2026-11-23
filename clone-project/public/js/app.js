@@ -744,7 +744,11 @@
     if (resetToken) {
       openResetPasswordModal(resetToken);
     } else if (!token && !refreshToken) {
-      showIntroScreen();
+      if (typeof window.showThreeIntro === 'function') {
+        window.showThreeIntro();
+      } else {
+        showAuthModal(true);
+      }
     } else {
       updateUserPanel();
       initWebSocket();
@@ -4806,25 +4810,8 @@
   window.openUserSettingsTab = openUserSettingsTab;
 
   function showIntroScreen() {
-    const introEl = document.getElementById('intro-screen');
-    const authModal = document.getElementById('auth-modal');
-    if (authModal) authModal.classList.remove('open');
-    if (introEl) {
-      introEl.style.display = 'flex';
-      introEl.classList.remove('fade-out');
-      // Trigger browser layout pass to enable transitions
-      void introEl.offsetWidth;
-      introEl.classList.add('open');
-
-      // Animate boot progress bar from 0 to 100%
-      const bar = document.getElementById('intro-boot-progress-bar');
-      if (bar) {
-        bar.style.width = '0%';
-        setTimeout(() => {
-          bar.style.transition = 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1)';
-          bar.style.width = '100%';
-        }, 120);
-      }
+    if (typeof window.showThreeIntro === 'function') {
+      window.showThreeIntro();
     } else {
       showAuthModal(true);
     }
@@ -4832,28 +4819,29 @@
   window.showIntroScreen = showIntroScreen;
 
   function dismissIntroAndOpenAuth(tab = 'login') {
-    const introEl = document.getElementById('intro-screen');
-    if (introEl && introEl.classList.contains('open')) {
-      introEl.classList.add('fade-out');
-      setTimeout(() => {
-        introEl.style.display = 'none';
-        introEl.classList.remove('open', 'fade-out');
-        showAuthModal(true);
-        if (typeof window.setAuthTab === 'function') {
-          window.setAuthTab(tab);
-        }
-      }, 350);
-    } else {
-      showAuthModal(true);
-      if (typeof window.setAuthTab === 'function') {
-        window.setAuthTab(tab);
-      }
+    showAuthModal(true);
+    if (typeof window.setAuthTab === 'function') {
+      window.setAuthTab(tab);
     }
   }
   window.dismissIntroAndOpenAuth = dismissIntroAndOpenAuth;
 
   function showAuthModal(show) {
-    authModalEl.classList.toggle('open', show);
+    if (show) {
+      if (typeof window.showThreeIntro === 'function' && document.getElementById('three-intro-container')?.style.display !== 'block') {
+        window.showThreeIntro();
+      } else {
+        authModalEl.classList.add('open');
+        authModalEl.style.display = 'flex';
+        authModalEl.style.opacity = '1';
+      }
+    } else {
+      authModalEl.classList.remove('open');
+      authModalEl.style.display = 'none';
+      if (typeof window.dismissThreeIntro === 'function') {
+        window.dismissThreeIntro();
+      }
+    }
   }
 
   function showCreateGuildModal(show) {

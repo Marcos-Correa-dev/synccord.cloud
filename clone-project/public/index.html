@@ -437,130 +437,38 @@
 
   </div>
 
-  <!-- INTRO SCREEN (Estilo TAG / Swiss Brutalism × iOS 2026) -->
-  <div class="intro-screen-overlay" id="intro-screen" style="display: none;">
-    <div class="intro-background-fx">
-      <div class="intro-grid-pattern"></div>
-      <div class="intro-glow-spot"></div>
+  <!-- THREE.JS 3D PURPLE CANVAS & AUTH OVERLAY (Referência: ThreeJS Challenge #0) -->
+  <div id="three-intro-container" class="three-intro-container" style="display: none;">
+    <canvas id="three-intro-canvas"></canvas>
+
+    <!-- Floating 3D Title / Brand Hero (Animado com GSAP) -->
+    <div id="three-intro-hero" class="three-intro-hero">
+      <div class="brand-badge purple-badge">
+        <i class="fa-solid fa-cube"></i> SYNCCORD // 3D STAGE
+      </div>
+      <h1 class="three-intro-title">
+        NEXT-GEN <span>CONVERSATION</span>
+      </h1>
+      <p class="three-intro-subtitle">
+        EXPERIÊNCIA 3D EM TEMPO REAL • ÁUDIO OPUS HD • COMUNICAÇÃO IMERSIVA
+      </p>
     </div>
 
-    <div class="intro-card">
+    <!-- AUTH MODAL (Login / Register) Sobreposto no Cenário 3D Roxo com Frosted Glass -->
+    <div class="three-auth-card" id="auth-modal">
       <div class="swiss-corner swiss-tl"></div>
       <div class="swiss-corner swiss-tr"></div>
       <div class="swiss-corner swiss-bl"></div>
       <div class="swiss-corner swiss-br"></div>
 
-      <!-- Topbar / Branding -->
-      <div class="intro-topbar">
-        <div class="brand-badge">
-          <i class="fa-solid fa-tag"></i> SYNCCORD // ENGINE
-        </div>
-        <div class="top-stats">
-          <div class="stat-pill spike">
-            <i class="fa-solid fa-bolt"></i>
-            <span>CORE:</span>
-            <span class="num">ONLINE 2026</span>
-          </div>
-          <span style="color: var(--tag-border);">•</span>
-          <div class="stat-pill">
-            <span>DSP:</span>
-            <span class="num" style="color: #00E699;">ARMED</span>
-          </div>
-        </div>
+      <div class="brand-badge purple-badge" style="align-self: center; margin-bottom: 2px;">
+        <i class="fa-solid fa-cube"></i> SYNCCORD // AUTH
       </div>
 
-      <!-- Main Headline Content -->
-      <div class="intro-hero-content">
-        <div class="intro-tagline">
-          <i class="fa-solid fa-bolt"></i> SWISS BRUTALISM × ULTRA LOW-LATENCY AUDIO RELAY
-        </div>
-        <h1 class="intro-hero-title">
-          NEXT-GEN <span>CONVERSATION</span> &amp; VOICE STAGE.
-        </h1>
-        <p class="intro-hero-desc">
-          Plataforma de comunicação hiper-otimizada com transmissão estéreo WebRTC Opus 48kHz, cancelamento acústico DSP e supressão de ruído militar.
-        </p>
+      <div class="modal-title" style="font-size: 22px;">Acesse sua Conta</div>
+      <div class="modal-subtitle">Conecte-se com sua credencial segura ou cadastre-se para entrar nos servidores.</div>
 
-        <!-- Diagnostic Telemetry Box ("Box de Caixa") -->
-        <div class="intro-diag-box">
-          <div class="diag-header">
-            <span class="diag-title" style="font-size: 12px; margin-bottom: 0;">
-              <i class="fa-solid fa-terminal" style="color: var(--tag-red); margin-right: 6px;"></i> SEQUÊNCIA DE INICIALIZAÇÃO
-            </span>
-            <span class="stat-pill">
-              <i class="fa-solid fa-signal" style="color: #00E699;"></i>
-              <span class="num" style="color: #00E699;">12ms PING</span>
-            </span>
-          </div>
-
-          <div class="diagnosis-grid" style="margin-top: 10px; margin-bottom: 12px;">
-            <div class="diag-card">
-              <div class="diag-header">
-                <span class="diag-badge badge-peak">WEBRTC</span>
-                <span style="font-size: 11px; font-weight: 700; color: #00E699;">ATIVO</span>
-              </div>
-              <div class="diag-title">Stereo Opus 48kHz</div>
-              <div class="diag-text">Pipeline de alta fidelidade calibrado para conversação imersiva.</div>
-            </div>
-
-            <div class="diag-card">
-              <div class="diag-header">
-                <span class="diag-badge badge-fix">DSP NOISE</span>
-                <span style="font-size: 11px; font-weight: 700; color: #00E699;">ARMED</span>
-              </div>
-              <div class="diag-title">Filtro Krisp DSP</div>
-              <div class="diag-text">Supressão acústica de fundo com processamento em tempo real.</div>
-            </div>
-
-            <div class="diag-card">
-              <div class="diag-header">
-                <span class="diag-badge badge-drop">CRIPTOGRAFIA</span>
-                <span style="font-size: 11px; font-weight: 700; color: var(--tag-orange);">TLS 1.3</span>
-              </div>
-              <div class="diag-title">Túnel Seguro</div>
-              <div class="diag-text">Transmissão ponto-a-ponto com certificação de ponta a ponta.</div>
-            </div>
-          </div>
-
-          <!-- Boot progress meter -->
-          <div class="intro-boot-progress-wrap">
-            <div class="intro-boot-progress-bar" id="intro-boot-progress-bar"></div>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="intro-actions-row">
-          <button class="btn-action primary intro-btn-large" id="intro-btn-enter" onclick="dismissIntroAndOpenAuth('login')">
-            <i class="fa-solid fa-arrow-right-to-bracket"></i> ENTRAR NA PLATAFORMA
-          </button>
-          <button class="btn-action intro-btn-large" id="intro-btn-register" onclick="dismissIntroAndOpenAuth('register')">
-            <i class="fa-solid fa-user-plus"></i> CRIAR NOVA CONTA
-          </button>
-        </div>
-
-        <div class="intro-footer-tags">
-          <span>SWISS BRUTALISM × IOS SYSTEM</span> • <span>VERSION 0.1.13</span> • <span>HIGH-CONVERSION 2026</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- AUTH MODAL (Login / Register) -->
-  <div class="modal-overlay" id="auth-modal">
-    <div class="modal-content">
-      <div class="swiss-corner swiss-tl"></div>
-      <div class="swiss-corner swiss-tr"></div>
-      <div class="swiss-corner swiss-bl"></div>
-      <div class="swiss-corner swiss-br"></div>
-
-      <div class="brand-badge" style="align-self: center; margin-bottom: 2px;">
-        <i class="fa-solid fa-tag"></i> SYNCCORD // AUTH
-      </div>
-
-      <div class="modal-title">Acesse sua Conta</div>
-      <div class="modal-subtitle">Conecte-se com sua credencial segura ou cadastre-se para entrar nos canais.</div>
-
-      <div class="auth-tabs-row" style="display: flex; gap: 8px; border-bottom: 1px solid var(--tag-border); padding-bottom: 10px;">
+      <div class="auth-tabs-row" style="display: flex; gap: 8px; border-bottom: 1px solid var(--purple-border); padding-bottom: 10px;">
         <button id="auth-tab-login" class="btn-secondary active auth-tab-btn" onclick="setAuthTab('login')">
           <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
         </button>
@@ -572,23 +480,23 @@
       <form id="auth-form" style="display: flex; flex-direction: column; gap: 14px; margin-top: 6px;">
         <div class="form-group" id="auth-username-group" style="display: none;">
           <label class="form-label">Nome de Usuário // Username</label>
-          <input type="text" class="form-input" id="auth-username" placeholder="seu_usuario">
+          <input type="text" class="form-input purple-input" id="auth-username" placeholder="seu_usuario">
         </div>
 
         <div class="form-group">
           <label class="form-label">E-mail // Credencial</label>
-          <input type="email" class="form-input" id="auth-email" placeholder="nome@exemplo.com" required>
+          <input type="email" class="form-input purple-input" id="auth-email" placeholder="nome@exemplo.com" required>
         </div>
 
         <div class="form-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <label class="form-label" style="margin-bottom: 0;">Senha // Password</label>
-            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--tag-red); text-decoration: none; font-weight: 700;">Esqueceu sua senha?</a>
+            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--purple-accent); text-decoration: none; font-weight: 700;">Esqueceu sua senha?</a>
           </div>
-          <input type="password" class="form-input" id="auth-password" placeholder="••••••••" required>
+          <input type="password" class="form-input purple-input" id="auth-password" placeholder="••••••••" required>
         </div>
 
-        <button type="submit" class="btn-primary" id="auth-submit-btn" style="margin-top: 4px;">
+        <button type="submit" class="btn-primary btn-purple" id="auth-submit-btn" style="margin-top: 4px;">
           <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
         </button>
       </form>
@@ -1054,6 +962,10 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <!-- Three.js & GSAP 3D Animation Engines -->
+  <script src="/js/vendor/three.min.js"></script>
+  <script src="/js/vendor/gsap.min.js"></script>
+  <script src="/js/three-intro.js"></script>
   <script src="/js/audio/domain/audio-settings.js"></script>
   <script src="/js/audio/ports/noise-suppressor.port.js"></script>
   <script src="/js/audio/infrastructure/dsp-noise-suppressor.adapter.js"></script>
