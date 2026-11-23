@@ -273,8 +273,8 @@ fn main() {
     let init_script = r#"
         window.__IS_NATIVE_DESKTOP__ = true;
         window.__DESKTOP_PLATFORM__ = 'rust-wry';
-        window.__DESKTOP_VERSION__ = '0.1.13';
-        console.log('[SyncCord Desktop v0.1.13] Rust native client initialized (Wry / Tao / WebView2).');
+        window.__DESKTOP_VERSION__ = '0.1.14';
+        console.log('[SyncCord Desktop v0.1.14] Rust native client initialized (Wry / Tao / WebView2).');
 
         // Bidirectional IPC Bridge to Rust Native Host
         window.__desktopNotify = function(type, payload) {
@@ -327,11 +327,13 @@ fn main() {
 
     // Chromium command line flags for WebView2:
     // Enables WebRTC screensharing, audio sink selection (headphones/bluetooth/speakers),
-    // and unrestricted audio autoplay for soundboard and incoming streams
+    // hardware-accelerated WebGL for 3D Three.js experiences, and unrestricted audio autoplay
     let browser_args = "--enable-features=WebRTCPipeWireCapturer,MediaStreamTrackSetSinkId \
                         --autoplay-policy=no-user-gesture-required \
                         --enable-usermedia-screen-capturing \
                         --allow-http-screen-capture \
+                        --ignore-gpu-blocklist \
+                        --enable-gpu-rasterization \
                         --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
     let proxy_ipc = event_proxy.clone();

@@ -1,6 +1,6 @@
 {
   "name": "@synccord/backend",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "SyncCord Full-Stack Backend - NestJS Hexagonal Architecture, Swagger, Jest, PostgreSQL/Neon/Supabase",
   "author": "Marcos Correa",
   "private": true,
