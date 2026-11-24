@@ -1,4 +1,20 @@
-import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, Inject, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+  Inject,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/infrastructure/adapters/out/jwt-auth.guard';
 import { CreateGuildDto } from '../dtos/create-guild.dto';
@@ -8,6 +24,8 @@ import { ListUserGuildsUseCase, LIST_USER_GUILDS_USE_CASE } from '@modules/guild
 import { ListGuildMembersUseCase, LIST_GUILD_MEMBERS_USE_CASE } from '@modules/guilds/application/ports/in/list-guild-members.use-case';
 import { JoinGuildUseCase, JOIN_GUILD_USE_CASE } from '@modules/guilds/application/ports/in/join-guild.use-case';
 import { GuildRepositoryPort, GUILD_REPOSITORY_PORT, GuildMemberInfo } from '@modules/guilds/application/ports/out/guild-repository.port';
+import { DiscordGateway } from '@modules/gateway/discord.gateway';
+import { GatewayOpcode } from '@shared/constants/discord.constants';
 import { User } from '@modules/auth/domain/user.entity';
 
 @ApiTags('Guilds')
@@ -26,6 +44,7 @@ export class GuildsController {
     private readonly joinGuildUseCase: JoinGuildUseCase,
     @Inject(GUILD_REPOSITORY_PORT)
     private readonly guildRepo: GuildRepositoryPort,
+    private readonly gateway: DiscordGateway,
   ) {}
 
   @Post()
@@ -92,5 +111,52 @@ export class GuildsController {
       description: guild.description,
       createdAt: guild.createdAt,
     };
+  }
+
+  @Delete(':guildId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a server (guild) — Only allowed for the server owner' })
+  @ApiParam({ name: 'guildId', description: 'Snowflake ID of the guild to delete' })
+  async deleteGuild(
+    @Param('guildId') guildId: string,
+    @Request() req: { user: User },
+  ): Promise<{ deleted: boolean; id: string }> {
+    const guild = await this.guildRepo.findById(guildId);
+    if (!guild) {
+      throw new NotFoundException('Servidor não encontrado.');
+    }
+    if (guild.ownerId !== req.user.id) {
+      throw new ForbiddenException('Apenas o criador (dono) do servidor pode excluí-lo.');
+    }
+
+    await this.guildRepo.delete(guildId);
+    if (this.gateway?.server) {
+      this.gateway.server.emit('packet', {
+        op: GatewayOpcode.DISPATCH,
+        t: 'GUILD_DELETE',
+        d: { id: guildId },
+      });
+    }
+    return { deleted: true, id: guildId };
+  }
+
+  @Delete(':guildId/members/@me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Leave a server (guild) — Only for invited members (non-owners)' })
+  @ApiParam({ name: 'guildId', description: 'Snowflake ID of the guild to leave' })
+  async leaveGuild(
+    @Param('guildId') guildId: string,
+    @Request() req: { user: User },
+  ): Promise<{ left: boolean; guildId: string }> {
+    const guild = await this.guildRepo.findById(guildId);
+    if (!guild) {
+      throw new NotFoundException('Servidor não encontrado.');
+    }
+    if (guild.ownerId === req.user.id) {
+      throw new BadRequestException('O criador do servidor não pode sair dele; utilize a opção Excluir Servidor.');
+    }
+
+    await this.guildRepo.removeMember(guildId, req.user.id);
+    return { left: true, guildId };
   }
 }

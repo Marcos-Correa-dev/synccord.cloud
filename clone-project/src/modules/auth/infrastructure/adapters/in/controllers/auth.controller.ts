@@ -67,16 +67,14 @@ export class AuthController {
   async register(@Body() dto: RegisterDto, @Req() req: ExpressRequest): Promise<AuthResponseDto> {
     const result = await this.registerUseCase.execute(dto);
 
-    let emailPreviewUrl: string | undefined;
     if (result.verificationRequired && result.verificationToken) {
       const baseUrl = this.resolveBaseUrl(req);
       const verifyLink = `${baseUrl}/?verifyEmail=${encodeURIComponent(result.verificationToken)}`;
-      const emailResult = await this.emailService.sendVerificationEmail(
+      await this.emailService.sendVerificationEmail(
         result.user.email,
         result.user.username,
         verifyLink,
       );
-      emailPreviewUrl = emailResult.previewUrl;
     }
 
     return {
@@ -93,7 +91,6 @@ export class AuthController {
       refreshToken: result.refreshToken,
       verificationRequired: result.verificationRequired,
       message: result.message,
-      emailPreviewUrl,
     };
   }
 
@@ -284,7 +281,7 @@ export class AuthController {
   async forgotPassword(
     @Body() body: { email: string },
     @Req() req: ExpressRequest,
-  ): Promise<{ message: string; emailPreviewUrl?: string }> {
+  ): Promise<{ message: string }> {
     const email = (body?.email || '').trim().toLowerCase();
     if (!email) {
       throw new BadRequestException('Por favor, informe um e-mail válido.');
@@ -301,11 +298,10 @@ export class AuthController {
 
     const baseUrl = this.resolveBaseUrl(req);
     const resetLink = `${baseUrl}/?reset=${encodeURIComponent(token)}`;
-    const emailResult = await this.emailService.sendPasswordResetEmail(user.email, user.username, resetLink);
+    await this.emailService.sendPasswordResetEmail(user.email, user.username, resetLink);
 
     return {
-      message: `Enviamos um e-mail com o link de redefinição de senha para ${user.email}. Acesse o link recebido no seu e-mail para liberar a criação da nova senha.`,
-      emailPreviewUrl: emailResult.previewUrl,
+      message: `Enviamos um e-mail com o link de redefinição de senha diretamente para ${user.email}. Verifique sua caixa de entrada (Gmail, Outlook, etc.) e clique no link recebido para criar sua nova senha.`,
     };
   }
 

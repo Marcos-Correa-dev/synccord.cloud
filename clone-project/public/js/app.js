@@ -939,6 +939,18 @@
         if (!currentGuild && currentUser && packet.d?.participants?.includes(currentUser.id)) {
           loadDirectMessagesHome();
         }
+      } else if (packet.op === 0 && packet.t === 'GUILD_DELETE') {
+        const deletedGuildId = packet.d?.id;
+        if (deletedGuildId) {
+          if (connectedVoiceChannel && currentGuild && currentGuild.id === deletedGuildId) {
+            leaveVoiceChannel(true);
+          }
+          if (currentGuild && currentGuild.id === deletedGuildId) {
+            currentGuild = null;
+            currentChannel = null;
+          }
+          loadGuilds();
+        }
       } else if (packet.op === 0 && packet.t === 'VOICE_STATES_SYNC') {
         voiceStates = packet.d || [];
         renderVoiceUsers();
@@ -1646,11 +1658,386 @@
   }
   window.toggleFolderExpanded = toggleFolderExpanded;
 
-  function createGuildIconElement(g) {
+  let activeGuildContextMenu = null;
+  let guildNotificationSettings = {};
+  try {
+    const savedNotifs = JSON.parse(localStorage.getItem('synccord_guild_notifications') || 'null');
+    if (savedNotifs && typeof savedNotifs === 'object') {
+      guildNotificationSettings = savedNotifs;
+    }
+  } catch {}
+
+  function getGuildNotificationConfig(guildId) {
+    const cfg = guildNotificationSettings[guildId] || {
+      muted: false,
+      muteUntil: null,
+      level: 'all',
+      suppressEveryone: false,
+    };
+    if (cfg.muted && cfg.muteUntil && Date.now() > cfg.muteUntil) {
+      cfg.muted = false;
+      cfg.muteUntil = null;
+      saveGuildNotificationConfig(guildId, cfg);
+    }
+    return cfg;
+  }
+
+  function saveGuildNotificationConfig(guildId, cfg) {
+    guildNotificationSettings[guildId] = cfg;
+    try {
+      localStorage.setItem('synccord_guild_notifications', JSON.stringify(guildNotificationSettings));
+    } catch {}
+  }
+
+  function closeGuildContextMenu() {
+    if (activeGuildContextMenu) {
+      activeGuildContextMenu.remove();
+      activeGuildContextMenu = null;
+    }
+    document.removeEventListener('click', closeGuildContextMenu);
+  }
+
+  function openGuildContextMenu(e, guild, isInsideFolder = false) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    closeGuildContextMenu();
+    if (typeof closeChannelContextMenu === 'function') closeChannelContextMenu();
+    if (typeof closeMessageContextMenu === 'function') closeMessageContextMenu();
+    if (typeof closeMemberContextMenu === 'function') closeMemberContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+    if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
+
+    if (!guild || !guild.id) return;
+
+    const isOwner = Boolean(currentUser && String(guild.ownerId) === String(currentUser.id));
+    const notifCfg = getGuildNotificationConfig(guild.id);
+    const isMuted = Boolean(notifCfg.muted);
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '235px';
+    menu.style.overflow = 'visible';
+
+    const posX = Math.min(e.clientX || 76, window.innerWidth - 260);
+    const posY = Math.min(e.clientY || 100, window.innerHeight - 280);
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" id="guild-ctx-mark-read">
+        <span>Marcar como lido</span>
+      </div>
+
+      <div class="context-menu-divider"></div>
+
+      <div class="context-menu-item" id="guild-ctx-invite" style="color: #949cf7; font-weight: 600;">
+        <span>Convidar para o servidor</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+      </div>
+
+      <div class="context-menu-divider"></div>
+
+      <div class="context-menu-item" id="guild-ctx-mute-row" style="position: relative;">
+        <span>${isMuted ? 'Reativar som do servidor' : 'Silenciar servidor'}</span>
+        <span style="font-size: 11px; color: var(--text-muted);">▶</span>
+        <div id="guild-ctx-mute-submenu" style="display: none; position: absolute; left: 100%; top: -4px; margin-left: 4px; background: #111214; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 6px; min-width: 195px; box-shadow: 0 8px 24px rgba(0,0,0,0.65); z-index: 10001;">
+          ${isMuted ? `
+            <div class="context-menu-item guild-mute-opt" data-minutes="0">
+              <span>🔊 Reativar notificações agora</span>
+            </div>
+          ` : `
+            <div class="context-menu-item guild-mute-opt" data-minutes="15"><span>Por 15 minutos</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="60"><span>Por 1 hora</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="180"><span>Por 3 horas</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="480"><span>Por 8 horas</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="1440"><span>Por 24 horas</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="-1"><span>Até eu reativar</span></div>
+          `}
+        </div>
+      </div>
+
+      <div class="context-menu-item" id="guild-ctx-notif-settings" style="position: relative;">
+        <div style="display: flex; flex-direction: column;">
+          <span>Config. de notificação</span>
+          <span style="font-size: 10px; color: var(--text-muted);">${notifCfg.level === 'mentions' ? 'Apenas @menções' : (notifCfg.level === 'nothing' ? 'Nada' : 'Todas as mensagens')}</span>
+        </div>
+        <span style="font-size: 11px; color: var(--text-muted);">▶</span>
+      </div>
+
+      ${isInsideFolder ? `
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" id="guild-ctx-remove-folder">
+          <span>Remover da Pasta</span>
+        </div>
+      ` : ''}
+
+      <div class="context-menu-divider"></div>
+
+      ${isOwner ? `
+        <div class="context-menu-item" id="guild-ctx-delete-server" style="color: #fa777c; font-weight: 600;">
+          <span>Excluir servidor</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+        </div>
+      ` : `
+        <div class="context-menu-item" id="guild-ctx-leave-server" style="color: #fa777c; font-weight: 600;">
+          <span>Sair do servidor</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </div>
+      `}
+    `;
+
+    menu.querySelector('#guild-ctx-mark-read').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeGuildContextMenu();
+      showToastNotification(`Servidor "${guild.name}" marcado como lido.`);
+    });
+
+    menu.querySelector('#guild-ctx-invite').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeGuildContextMenu();
+      openGuildInviteModal(guild);
+    });
+
+    const muteRow = menu.querySelector('#guild-ctx-mute-row');
+    const muteSubmenu = menu.querySelector('#guild-ctx-mute-submenu');
+    if (muteRow && muteSubmenu) {
+      muteRow.addEventListener('mouseenter', () => {
+        muteSubmenu.style.display = 'block';
+      });
+      muteRow.addEventListener('mouseleave', () => {
+        muteSubmenu.style.display = 'none';
+      });
+      muteRow.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (isMuted) {
+          applyGuildMuteDuration(guild, 0);
+          closeGuildContextMenu();
+        } else {
+          muteSubmenu.style.display = muteSubmenu.style.display === 'block' ? 'none' : 'block';
+        }
+      });
+
+      muteSubmenu.querySelectorAll('.guild-mute-opt').forEach((opt) => {
+        opt.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const mins = parseInt(opt.getAttribute('data-minutes'), 10);
+          applyGuildMuteDuration(guild, mins);
+          closeGuildContextMenu();
+        });
+      });
+    }
+
+    menu.querySelector('#guild-ctx-notif-settings').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeGuildContextMenu();
+      openGuildNotificationSettingsModal(guild);
+    });
+
+    const removeFolderBtn = menu.querySelector('#guild-ctx-remove-folder');
+    if (removeFolderBtn) {
+      removeFolderBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeGuildContextMenu();
+        removeGuildFromFolder(guild.id);
+      });
+    }
+
+    const deleteServerBtn = menu.querySelector('#guild-ctx-delete-server');
+    if (deleteServerBtn) {
+      deleteServerBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeGuildContextMenu();
+        confirmDeleteGuild(guild);
+      });
+    }
+
+    const leaveServerBtn = menu.querySelector('#guild-ctx-leave-server');
+    if (leaveServerBtn) {
+      leaveServerBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeGuildContextMenu();
+        confirmLeaveGuild(guild);
+      });
+    }
+
+    document.body.appendChild(menu);
+    activeGuildContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeGuildContextMenu);
+    }, 10);
+  }
+  window.openGuildContextMenu = openGuildContextMenu;
+
+  function openGuildInviteModal(guild) {
+    if (!guild || !guild.id) return;
+    const modal = document.getElementById('invite-voice-modal');
+    const title = document.getElementById('invite-modal-title');
+    const input = document.getElementById('invite-link-input');
+    const copyBtn = document.getElementById('copy-invite-btn');
+    if (!modal || !input) return;
+
+    if (title) {
+      title.textContent = `Convidar amigos para ${guild.name}`;
+    }
+    input.value = `${window.location.origin}/?guild=${encodeURIComponent(guild.id)}`;
+    if (copyBtn) {
+      copyBtn.textContent = 'Copiar';
+      copyBtn.style.backgroundColor = 'var(--accent)';
+    }
+    modal.classList.add('open');
+  }
+  window.openGuildInviteModal = openGuildInviteModal;
+
+  function applyGuildMuteDuration(guild, minutes) {
+    if (!guild || !guild.id) return;
+    const cfg = getGuildNotificationConfig(guild.id);
+    if (minutes === 0) {
+      cfg.muted = false;
+      cfg.muteUntil = null;
+      saveGuildNotificationConfig(guild.id, cfg);
+      showToastNotification(`Notificações reativadas para "${guild.name}".`);
+    } else if (minutes < 0) {
+      cfg.muted = true;
+      cfg.muteUntil = null;
+      saveGuildNotificationConfig(guild.id, cfg);
+      showToastNotification(`Servidor "${guild.name}" silenciado até você reativar.`);
+    } else {
+      cfg.muted = true;
+      cfg.muteUntil = Date.now() + minutes * 60 * 1000;
+      saveGuildNotificationConfig(guild.id, cfg);
+      showToastNotification(`Servidor "${guild.name}" silenciado por ${minutes >= 60 ? `${minutes / 60}h` : `${minutes} min`}.`);
+    }
+    loadGuilds();
+  }
+
+  function openGuildNotificationSettingsModal(guild) {
+    if (!guild || !guild.id) return;
+    const modal = document.getElementById('guild-notifications-modal');
+    const subtitle = document.getElementById('guild-notif-modal-subtitle');
+    const idInput = document.getElementById('guild-notif-guild-id');
+    const muteCheckbox = document.getElementById('guild-notif-mute-checkbox');
+    const suppressCheckbox = document.getElementById('guild-notif-suppress-everyone');
+
+    const cfg = getGuildNotificationConfig(guild.id);
+    if (subtitle) subtitle.textContent = `Configurações para ${guild.name}`;
+    if (idInput) idInput.value = guild.id;
+    if (muteCheckbox) muteCheckbox.checked = Boolean(cfg.muted);
+    if (suppressCheckbox) suppressCheckbox.checked = Boolean(cfg.suppressEveryone);
+
+    document.querySelectorAll('input[name="guild-notif-level"]').forEach((radio) => {
+      radio.checked = radio.value === (cfg.level || 'all');
+    });
+
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+    }
+  }
+  window.openGuildNotificationSettingsModal = openGuildNotificationSettingsModal;
+
+  function saveGuildNotificationSettingsModal() {
+    const idInput = document.getElementById('guild-notif-guild-id');
+    const muteCheckbox = document.getElementById('guild-notif-mute-checkbox');
+    const suppressCheckbox = document.getElementById('guild-notif-suppress-everyone');
+    const selectedRadio = document.querySelector('input[name="guild-notif-level"]:checked');
+
+    const guildId = idInput ? idInput.value : '';
+    if (!guildId) {
+      closeModal('guild-notifications-modal');
+      return;
+    }
+
+    const cfg = getGuildNotificationConfig(guildId);
+    cfg.muted = Boolean(muteCheckbox?.checked);
+    if (!cfg.muted) cfg.muteUntil = null;
+    cfg.level = selectedRadio ? selectedRadio.value : 'all';
+    cfg.suppressEveryone = Boolean(suppressCheckbox?.checked);
+
+    saveGuildNotificationConfig(guildId, cfg);
+    closeModal('guild-notifications-modal');
+    loadGuilds();
+    showToastNotification('Configurações de notificação do servidor salvas!');
+  }
+  window.saveGuildNotificationSettingsModal = saveGuildNotificationSettingsModal;
+
+  function confirmDeleteGuild(guild) {
+    if (!guild || !guild.id) return;
+    showConfirmDialog({
+      title: `Excluir '${guild.name}'`,
+      message: `Tem certeza de que deseja excluir <strong>${escapeHtml(guild.name)}</strong>? Essa ação não pode ser desfeita e todos os canais e mensagens deste servidor serão removidos permanentemente.`,
+      confirmText: 'Excluir Servidor',
+      cancelText: 'Cancelar',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api(`/guilds/${guild.id}`, { method: 'DELETE' });
+          if (connectedVoiceChannel && currentGuild && currentGuild.id === guild.id) {
+            leaveVoiceChannel(true);
+          }
+          if (currentGuild && currentGuild.id === guild.id) {
+            currentGuild = null;
+            currentChannel = null;
+          }
+          await loadGuilds();
+          if (!currentGuild) {
+            selectHome();
+          }
+          showToastNotification(`Servidor "${guild.name}" excluído com sucesso!`);
+        } catch (err) {
+          alert(`Erro ao excluir servidor: ${err.message}`);
+        }
+      },
+    });
+  }
+  window.confirmDeleteGuild = confirmDeleteGuild;
+
+  function confirmLeaveGuild(guild) {
+    if (!guild || !guild.id) return;
+    showConfirmDialog({
+      title: `Sair de '${guild.name}'`,
+      message: `Tem certeza de que deseja sair de <strong>${escapeHtml(guild.name)}</strong>? Você não poderá voltar a este servidor a menos que seja convidado novamente.`,
+      confirmText: 'Sair do Servidor',
+      cancelText: 'Cancelar',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api(`/guilds/${guild.id}/members/@me`, { method: 'DELETE' });
+          if (connectedVoiceChannel && currentGuild && currentGuild.id === guild.id) {
+            leaveVoiceChannel(true);
+          }
+          if (currentGuild && currentGuild.id === guild.id) {
+            currentGuild = null;
+            currentChannel = null;
+          }
+          await loadGuilds();
+          if (!currentGuild) {
+            selectHome();
+          }
+          showToastNotification(`Você saiu do servidor "${guild.name}".`);
+        } catch (err) {
+          alert(`Erro ao sair do servidor: ${err.message}`);
+        }
+      },
+    });
+  }
+  window.confirmLeaveGuild = confirmLeaveGuild;
+
+  function createGuildIconElement(g, isInsideFolder = false) {
+    const notifCfg = getGuildNotificationConfig(g.id);
     const icon = document.createElement('div');
     icon.className = `guild-icon ${currentGuild && currentGuild.id === g.id ? 'active' : ''}`;
-    icon.title = g.name;
+    icon.title = notifCfg.muted ? `${g.name} (Silenciado)` : g.name;
     icon.draggable = true;
+    if (notifCfg.muted) {
+      icon.style.opacity = '0.55';
+    }
 
     if (g.icon) {
       icon.innerHTML = `<img src="${escapeHtml(g.icon)}" style="width: 100%; height: 100%; border-radius: inherit; object-fit: cover;" />`;
@@ -1659,6 +2046,9 @@
     }
 
     icon.onclick = () => selectGuild(g);
+    icon.oncontextmenu = (e) => {
+      openGuildContextMenu(e, g, isInsideFolder);
+    };
 
     icon.ondragstart = (e) => {
       draggedGuildId = g.id;
@@ -1768,19 +2158,7 @@
       expandedContainer.appendChild(collapseBtn);
 
       folderGuilds.forEach((g) => {
-        const icon = createGuildIconElement(g);
-        icon.oncontextmenu = (e) => {
-          e.preventDefault();
-          showConfirmDialog({
-            title: 'Remover da Pasta?',
-            message: `Deseja remover o servidor <strong>${escapeHtml(g.name)}</strong> desta pasta?`,
-            confirmText: 'Remover',
-            cancelText: 'Cancelar',
-            onConfirm: () => {
-              removeGuildFromFolder(g.id);
-            },
-          });
-        };
+        const icon = createGuildIconElement(g, true);
         expandedContainer.appendChild(icon);
       });
 
@@ -5672,9 +6050,8 @@
             feedbackBox.style.border = '1px solid #23a55a';
             feedbackBox.style.color = '#23a55a';
             feedbackBox.innerHTML = `
-              <strong><i class="fa-solid fa-envelope-circle-check"></i> Verifique seu e-mail!</strong><br>
-              ${escapeHtml(res.message || `Enviamos um link de confirmação para ${email}. Acesse o link no seu e-mail para definir sua senha.`)}
-              ${res.emailPreviewUrl ? `<br><br><a href="${escapeHtml(res.emailPreviewUrl)}" target="_blank" rel="noopener noreferrer" style="color: #00a8fc; font-weight: 700; text-decoration: underline;">📬 Abrir Caixa de E-mail de Teste (Ethereal SMTP)</a>` : ''}
+              <strong><i class="fa-solid fa-envelope-circle-check"></i> Verifique sua caixa de entrada!</strong><br>
+              ${escapeHtml(res.message || `Enviamos um link de confirmação diretamente para ${email}. Abra seu e-mail (Gmail, Outlook, etc.) e clique no link recebido para definir sua senha.`)}
             `;
           }
           return;
@@ -8136,7 +8513,13 @@
     const el = document.getElementById(id);
     if (el) {
       el.classList.remove('open');
-      if (id === 'forgot-password-modal' || id === 'reset-password-modal' || id === 'confirm-email-modal' || id === 'edit-channel-modal') {
+      if (
+        id === 'forgot-password-modal' ||
+        id === 'reset-password-modal' ||
+        id === 'confirm-email-modal' ||
+        id === 'edit-channel-modal' ||
+        id === 'guild-notifications-modal'
+      ) {
         el.style.display = 'none';
       }
     }
@@ -8315,7 +8698,6 @@
         feedback.style.color = '#23a55a';
         feedback.innerHTML = `
           <strong>E-mail enviado!</strong> ${escapeHtml(res.message || 'Verifique sua caixa de entrada e clique no link recebido para redefinir sua senha.')}
-          ${res.emailPreviewUrl ? `<br><br><a href="${escapeHtml(res.emailPreviewUrl)}" target="_blank" rel="noopener noreferrer" style="color: #00a8fc; font-weight: 700; text-decoration: underline;">📬 Visualizar E-mail Enviado (Caixa de Entrada SMTP)</a>` : ''}
         `;
       }
     } catch (err) {

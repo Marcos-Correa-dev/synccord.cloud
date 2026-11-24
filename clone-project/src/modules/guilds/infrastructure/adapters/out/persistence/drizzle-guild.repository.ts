@@ -1,9 +1,17 @@
 ﻿import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, ilike } from 'drizzle-orm';
+import { eq, and, ilike, inArray } from 'drizzle-orm';
 import { Guild } from '@modules/guilds/domain/entities/guild.entity';
 import { GuildRepositoryPort, GuildMemberInfo } from '@modules/guilds/application/ports/out/guild-repository.port';
 import { DRIZZLE_DB, AppDatabase } from '@infrastructure/database/database.module';
-import { guildsTable, guildMembersTable, channelsTable, usersTable } from '@infrastructure/database/schema';
+import {
+  guildsTable,
+  guildMembersTable,
+  channelsTable,
+  usersTable,
+  messagesTable,
+  channelOverwritesTable,
+  rolesTable,
+} from '@infrastructure/database/schema';
 import { Snowflake } from '@shared/snowflake/snowflake';
 import { ChannelType } from '@shared/constants/discord.constants';
 
@@ -41,14 +49,12 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
 
   async findByName(name: string): Promise<Guild | null> {
     const trimmed = decodeURIComponent(name).trim();
-    // 1. Exact match (case-insensitive)
     let result = await this.db
       .select()
       .from(guildsTable)
       .where(ilike(guildsTable.name, trimmed))
       .limit(1);
 
-    // 2. Partial match (case-insensitive)
     if (result.length === 0) {
       result = await this.db
         .select()
@@ -82,7 +88,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
   }
 
   async findUserGuilds(userId: string): Promise<Guild[]> {
-    // 1. Guilds where user is an accepted member
     const members = await this.db
       .select({
         guild: guildsTable,
@@ -91,7 +96,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
       .innerJoin(guildsTable, eq(guildMembersTable.guildId, guildsTable.id))
       .where(eq(guildMembersTable.userId, userId));
 
-    // 2. Guilds where user is the owner (prevents missing servers if member entry wasn't recorded)
     const owned = await this.db
       .select()
       .from(guildsTable)
@@ -104,7 +108,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
     for (const g of owned) {
       if (!map.has(g.id)) {
         map.set(g.id, this.mapToDomain(g));
-        // Auto-heal membership table for the owner
         this.addMember(g.id, userId, ['owner']).catch(() => {});
       }
     }
@@ -124,8 +127,32 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
         joinedAt: new Date(),
       });
     } catch {
-      // In case of concurrent race condition or existing primary key, ignore cleanly
+      // Ignore concurrent insert conflict
     }
+  }
+
+  async removeMember(guildId: string, userId: string): Promise<void> {
+    await this.db
+      .delete(guildMembersTable)
+      .where(and(eq(guildMembersTable.guildId, guildId), eq(guildMembersTable.userId, userId)));
+  }
+
+  async delete(guildId: string): Promise<void> {
+    const channels = await this.db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(eq(channelsTable.guildId, guildId));
+
+    const channelIds = channels.map((c) => c.id);
+    if (channelIds.length > 0) {
+      await this.db.delete(messagesTable).where(inArray(messagesTable.channelId, channelIds));
+      await this.db.delete(channelOverwritesTable).where(inArray(channelOverwritesTable.channelId, channelIds));
+      await this.db.delete(channelsTable).where(eq(channelsTable.guildId, guildId));
+    }
+
+    await this.db.delete(rolesTable).where(eq(rolesTable.guildId, guildId));
+    await this.db.delete(guildMembersTable).where(eq(guildMembersTable.guildId, guildId));
+    await this.db.delete(guildsTable).where(eq(guildsTable.id, guildId));
   }
 
   async findGuildMembers(guildId: string): Promise<GuildMemberInfo[]> {
@@ -154,7 +181,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
   }
 
   async createDefaultChannels(guildId: string): Promise<void> {
-    // 1. Category "TEXT CHANNELS"
     const catId = Snowflake.generate();
     await this.db.insert(channelsTable).values({
       id: catId,
@@ -164,7 +190,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
       position: 0,
     });
 
-    // 2. Text Channel "#geral"
     const textId = Snowflake.generate();
     await this.db.insert(channelsTable).values({
       id: textId,
@@ -175,7 +200,6 @@ export class DrizzleGuildRepository implements GuildRepositoryPort {
       position: 0,
     });
 
-    // 3. Voice Channel "Geral"
     const voiceId = Snowflake.generate();
     await this.db.insert(channelsTable).values({
       id: voiceId,

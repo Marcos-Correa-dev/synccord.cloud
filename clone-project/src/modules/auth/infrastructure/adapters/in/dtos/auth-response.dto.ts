@@ -44,7 +44,4 @@ export class AuthResponseDto {
 
   @ApiPropertyOptional({ description: 'Confirmation message' })
   message?: string;
-
-  @ApiPropertyOptional({ description: 'Ethereal / SMTP email preview URL when in development' })
-  emailPreviewUrl?: string;
 }

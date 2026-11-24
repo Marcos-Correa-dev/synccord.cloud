@@ -15,6 +15,8 @@ describe('CreateGuildService Unit Tests', () => {
       searchGuilds: jest.fn().mockResolvedValue([]),
       findUserGuilds: jest.fn(),
       addMember: jest.fn().mockResolvedValue(undefined),
+      removeMember: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
       findGuildMembers: jest.fn().mockResolvedValue([]),
       isMember: jest.fn().mockResolvedValue(false),
       createDefaultChannels: jest.fn().mockResolvedValue(undefined),

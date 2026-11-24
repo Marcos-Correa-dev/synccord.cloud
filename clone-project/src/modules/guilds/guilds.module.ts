@@ -11,9 +11,10 @@ import { JOIN_GUILD_USE_CASE } from './application/ports/in/join-guild.use-case'
 import { GUILD_REPOSITORY_PORT } from './application/ports/out/guild-repository.port';
 import { DrizzleGuildRepository } from './infrastructure/adapters/out/persistence/drizzle-guild.repository';
 import { AuthModule } from '@modules/auth/auth.module';
+import { GatewayModule } from '@modules/gateway/gateway.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, GatewayModule],
   controllers: [GuildsController],
   providers: [
     {
