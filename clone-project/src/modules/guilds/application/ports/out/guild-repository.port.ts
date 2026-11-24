@@ -17,6 +17,8 @@ export interface GuildRepositoryPort {
   searchGuilds(query: string): Promise<Guild[]>;
   findUserGuilds(userId: string): Promise<Guild[]>;
   addMember(guildId: string, userId: string, roles?: string[]): Promise<void>;
+  removeMember(guildId: string, userId: string): Promise<void>;
+  delete(guildId: string): Promise<void>;
   findGuildMembers(guildId: string): Promise<GuildMemberInfo[]>;
   isMember(guildId: string, userId: string): Promise<boolean>;
   createDefaultChannels(guildId: string): Promise<void>;
