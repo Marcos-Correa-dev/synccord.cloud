@@ -83,6 +83,10 @@ export default defineConfig([
         clearInterval: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        Event: "readonly",
+        THREE: "readonly",
+        gsap: "readonly",
+        performance: "readonly",
       },
     },
     rules: {
@@ -126,6 +130,7 @@ export default defineConfig([
     "coverage/**",
     "target/**",
     "desktop/target/**",
+    "public/js/vendor/**",
     "**/*.WebView2/**",
     "**/*.tsbuildinfo",
     "package-lock.json",

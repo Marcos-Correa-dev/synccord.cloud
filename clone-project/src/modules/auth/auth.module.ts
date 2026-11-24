@@ -10,6 +10,7 @@ import { LOGIN_USE_CASE } from './application/ports/in/login.use-case';
 import { REFRESH_TOKEN_USE_CASE } from './application/ports/in/refresh-token.use-case';
 import { USER_REPOSITORY_PORT } from './application/ports/out/user-repository.port';
 import { DrizzleUserRepository } from './infrastructure/adapters/out/drizzle-user.repository';
+import { EmailService } from './infrastructure/adapters/out/email.service';
 import { JwtStrategy } from './infrastructure/adapters/out/jwt.strategy';
 import { JwtAuthGuard } from './infrastructure/adapters/out/jwt-auth.guard';
 
@@ -41,9 +42,10 @@ import { JwtAuthGuard } from './infrastructure/adapters/out/jwt-auth.guard';
       provide: USER_REPOSITORY_PORT,
       useClass: DrizzleUserRepository,
     },
+    EmailService,
     JwtStrategy,
     JwtAuthGuard,
   ],
-  exports: [USER_REPOSITORY_PORT, JwtAuthGuard],
+  exports: [USER_REPOSITORY_PORT, JwtAuthGuard, EmailService],
 })
 export class AuthModule {}

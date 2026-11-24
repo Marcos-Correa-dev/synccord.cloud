@@ -13,10 +13,14 @@ describe('SendMessageService Unit Tests', () => {
       create: jest.fn().mockImplementation((m: Message) => Promise.resolve(m)),
       findById: jest.fn(),
       findByChannelId: jest.fn(),
+      updateContent: jest.fn(),
+      delete: jest.fn(),
     };
 
     mockEventPublisher = {
       publishMessageCreated: jest.fn().mockResolvedValue(undefined),
+      publishMessageUpdated: jest.fn().mockResolvedValue(undefined),
+      publishMessageDeleted: jest.fn().mockResolvedValue(undefined),
     };
 
     service = new SendMessageService(mockMessageRepo, mockEventPublisher);

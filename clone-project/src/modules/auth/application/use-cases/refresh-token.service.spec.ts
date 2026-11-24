@@ -15,9 +15,13 @@ describe('RefreshTokenService', () => {
       findByEmail: jest.fn(),
       save: jest.fn(),
       updatePassword: jest.fn(),
+      markUserVerified: jest.fn(),
       createPasswordResetToken: jest.fn(),
       findPasswordResetToken: jest.fn(),
       markPasswordResetTokenUsed: jest.fn(),
+      createEmailVerificationToken: jest.fn(),
+      findEmailVerificationToken: jest.fn(),
+      markEmailVerificationTokenUsed: jest.fn(),
     };
 
     mockJwtService = {

@@ -4,4 +4,6 @@ export const MESSAGE_EVENT_PUBLISHER_PORT = 'MESSAGE_EVENT_PUBLISHER_PORT';
 
 export interface MessageEventPublisherPort {
   publishMessageCreated(message: Message): Promise<void>;
+  publishMessageUpdated?(message: Message): Promise<void>;
+  publishMessageDeleted?(channelId: string, messageId: string): Promise<void>;
 }

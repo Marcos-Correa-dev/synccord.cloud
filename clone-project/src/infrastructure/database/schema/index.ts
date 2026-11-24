@@ -81,3 +81,17 @@ export const passwordResetTokensTable = pgTable('password_reset_tokens', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   used: boolean('used').notNull().default(false),
 });
+
+export const emailVerificationTokensTable = pgTable('email_verification_tokens', {
+  token: varchar('token', { length: 64 }).primaryKey(),
+  userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  used: boolean('used').notNull().default(false),
+});
+
+export const dmParticipantsTable = pgTable('dm_participants', {
+  channelId: varchar('channel_id', { length: 32 }).references(() => channelsTable.id).notNull(),
+  userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

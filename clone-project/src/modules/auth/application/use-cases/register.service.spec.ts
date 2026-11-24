@@ -14,9 +14,13 @@ describe('RegisterService Unit Tests', () => {
       findByEmail: jest.fn(),
       save: jest.fn().mockImplementation((user: User) => Promise.resolve(user)),
       updatePassword: jest.fn(),
+      markUserVerified: jest.fn(),
       createPasswordResetToken: jest.fn(),
       findPasswordResetToken: jest.fn(),
       markPasswordResetTokenUsed: jest.fn(),
+      createEmailVerificationToken: jest.fn().mockResolvedValue(undefined),
+      findEmailVerificationToken: jest.fn(),
+      markEmailVerificationTokenUsed: jest.fn(),
     };
 
     mockJwtService = {
@@ -26,7 +30,7 @@ describe('RegisterService Unit Tests', () => {
     service = new RegisterService(mockUserRepo, mockJwtService);
   });
 
-  it('should successfully register a new user and generate a JWT', async () => {
+  it('should register a new user with password and generate a JWT', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(null);
 
     const result = await service.execute({
@@ -44,9 +48,24 @@ describe('RegisterService Unit Tests', () => {
     expect(mockJwtService.sign).toHaveBeenCalledTimes(2);
   });
 
-  it('should throw ConflictException if the email already exists', async () => {
+  it('should register a new user without password and generate email verification token', async () => {
+    mockUserRepo.findByEmail.mockResolvedValue(null);
+
+    const result = await service.execute({
+      username: 'marcos',
+      email: 'marcos@example.com',
+    });
+
+    expect(result).toBeDefined();
+    expect(result.verificationRequired).toBe(true);
+    expect(result.verificationToken).toBeDefined();
+    expect(result.user.verified).toBe(false);
+    expect(mockUserRepo.createEmailVerificationToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('should throw ConflictException if the email already exists and is verified', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(
-      new User('123', 'existing', '0001', 'marcos@example.com', 'hash'),
+      new User('123', 'existing', '0001', 'marcos@example.com', 'hash', null, false, true),
     );
 
     await expect(

@@ -136,10 +136,27 @@ export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
           used BOOLEAN NOT NULL DEFAULT FALSE
         );
 
+        CREATE TABLE IF NOT EXISTS email_verification_tokens (
+          token VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          email VARCHAR(255) NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          used BOOLEAN NOT NULL DEFAULT FALSE
+        );
+
+        CREATE TABLE IF NOT EXISTS dm_participants (
+          channel_id VARCHAR(32) NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (channel_id, user_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_roles_guild_id ON roles(guild_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_channel_id ON channel_overwrites(channel_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_target_id ON channel_overwrites(target_id);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_dm_participants_user_id ON dm_participants(user_id);
       `);
       this.logger.log('Database tables verified / initialized successfully');
     } catch (err: unknown) {
