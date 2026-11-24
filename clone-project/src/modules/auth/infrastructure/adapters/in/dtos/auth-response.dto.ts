@@ -18,21 +18,33 @@ export class UserProfileDto {
 
   @ApiProperty({ example: false, description: 'Whether the user is an automated bot' })
   bot: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Whether the user email is verified' })
+  verified?: boolean;
 }
 
 export class AuthResponseDto {
   @ApiProperty({ type: UserProfileDto, description: 'Authenticated user profile' })
   user: UserProfileDto;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     description: 'Bearer JWT access token',
   })
-  token: string;
+  token?: string;
 
   @ApiPropertyOptional({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     description: 'Bearer JWT refresh token for session renewal',
   })
   refreshToken?: string;
+
+  @ApiPropertyOptional({ example: false, description: 'Whether email verification is required before password setup' })
+  verificationRequired?: boolean;
+
+  @ApiPropertyOptional({ description: 'Confirmation message' })
+  message?: string;
+
+  @ApiPropertyOptional({ description: 'Ethereal / SMTP email preview URL when in development' })
+  emailPreviewUrl?: string;
 }

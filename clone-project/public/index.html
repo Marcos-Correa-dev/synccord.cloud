@@ -502,13 +502,19 @@
           <input type="email" class="form-input purple-input" id="auth-email" placeholder="nome@exemplo.com" required>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="auth-password-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <label class="form-label" style="margin-bottom: 0;">Senha // Password</label>
             <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--purple-accent); text-decoration: none; font-weight: 700;">Esqueceu sua senha?</a>
           </div>
           <input type="password" class="form-input purple-input" id="auth-password" placeholder="••••••••" required>
         </div>
+
+        <div id="auth-register-email-notice" style="display: none; padding: 10px 12px; border-radius: 6px; background: rgba(124, 58, 237, 0.16); border: 1px solid rgba(192, 132, 252, 0.35); font-size: 12px; color: #e9d5ff; line-height: 1.4;">
+          <i class="fa-solid fa-envelope-circle-check"></i> Enviaremos um link de confirmação real para o seu e-mail cadastrado. Após confirmar seu e-mail, você poderá definir sua senha de acesso.
+        </div>
+
+        <div id="auth-feedback-box" style="display: none; padding: 10px 12px; border-radius: 6px; font-size: 12.5px; line-height: 1.4;"></div>
 
         <button type="submit" class="btn-primary btn-purple" id="auth-submit-btn" style="margin-top: 4px;">
           <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
@@ -579,6 +585,79 @@
           <button type="submit" class="btn-primary" id="reset-password-submit-btn" style="padding: 0 24px;">Salvar Nova Senha</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- CONFIRM EMAIL & SET PASSWORD MODAL -->
+  <div class="modal-overlay" id="confirm-email-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 460px; padding: 28px 24px;">
+      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;">E-mail Confirmado! Defina sua Senha</div>
+      <div class="modal-subtitle" id="confirm-email-subtitle">Seu e-mail foi validado com sucesso. Agora crie uma senha segura para concluir seu cadastro no SyncCord.</div>
+
+      <input type="hidden" id="confirm-email-token" value="">
+
+      <form id="confirm-email-form" onsubmit="handleConfirmEmailSubmit(event)" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
+        <div class="form-group">
+          <label class="form-label">DEFINIR SENHA</label>
+          <div class="password-input-wrapper">
+            <input type="password" class="form-input" id="confirm-email-password" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password')" title="Mostrar/Ocultar senha">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">CONFIRMAR SENHA</label>
+          <div class="password-input-wrapper">
+            <input type="password" class="form-input" id="confirm-email-password-confirm" placeholder="Repita a senha" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password-confirm')" title="Mostrar/Ocultar senha">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="confirm-email-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+          <button type="button" class="btn-secondary" onclick="closeModal('confirm-email-modal')">Cancelar</button>
+          <button type="submit" class="btn-primary" id="confirm-email-submit-btn" style="padding: 0 24px;">Ativar Conta e Entrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT CHANNEL MODAL (Rename Text or Voice Channel) -->
+  <div class="modal-overlay" id="edit-channel-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 440px; padding: 24px; border-radius: 8px; background: #313338; box-shadow: 0 8px 32px rgba(0,0,0,0.6); text-align: left; gap: 0; position: relative;">
+      <div id="edit-channel-modal-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin-bottom: 8px;">
+        Editar Canal
+      </div>
+      <div id="edit-channel-modal-subtitle" style="font-size: 14px; color: #949ba4; line-height: 1.4; margin-bottom: 20px;">
+        Altere o nome deste canal. As alterações serão aplicadas em tempo real para todos no servidor.
+      </div>
+      <input type="hidden" id="edit-channel-id-input" value="" />
+      <input type="hidden" id="edit-channel-type-input" value="0" />
+      <div class="form-group" style="margin-bottom: 24px;">
+        <label class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 8px;">NOME DO CANAL</label>
+        <div class="channel-name-input-wrapper" style="background-color: #1e1f22; border-color: #1e1f22;">
+          <span id="edit-channel-prefix-icon" style="color: var(--text-muted); font-size: 16px; font-weight: bold; margin-right: 6px;">#</span>
+          <input type="text" class="form-input" id="edit-channel-name-input" placeholder="nome-do-canal" maxlength="100" style="border: none; padding: 0; background: transparent; width: 100%; color: #f2f3f5;" />
+        </div>
+        <div id="edit-channel-error" style="color: #fa777c; font-size: 12px; margin-top: 6px; display: none;"></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 12px; background: #2b2d31; margin: 0 -24px -24px -24px; padding: 16px 24px; border-radius: 0 0 8px 8px;">
+        <button type="button" class="btn-secondary" onclick="closeEditChannelModal()" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+          Cancelar
+        </button>
+        <button type="button" class="btn-primary" id="edit-channel-submit-btn" onclick="submitEditChannelModal()" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+          Salvar Alterações
+        </button>
+      </div>
     </div>
   </div>
 

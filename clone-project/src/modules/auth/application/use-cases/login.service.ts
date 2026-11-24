@@ -14,9 +14,16 @@ export class LoginService implements LoginUseCase {
   ) {}
 
   async execute(command: LoginCommand): Promise<{ user: User; token: string; refreshToken?: string }> {
-    const user = await this.userRepository.findByEmail(command.email);
+    const emailNormalized = command.email.trim().toLowerCase();
+    const user = await this.userRepository.findByEmail(emailNormalized);
     if (!user) {
       throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    if (!user.verified && user.passwordHash === 'PENDING_EMAIL_VERIFICATION') {
+      throw new UnauthorizedException(
+        'Por favor, confirme seu e-mail pelo link enviado antes de definir sua senha e fazer login.',
+      );
     }
 
     const isValid = await bcrypt.compare(command.password, user.passwordHash);

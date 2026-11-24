@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { User } from '@modules/auth/domain/user.entity';
 import { UserRepositoryPort } from '@modules/auth/application/ports/out/user-repository.port';
 import { DRIZZLE_DB, AppDatabase } from '@infrastructure/database/database.module';
-import { usersTable, passwordResetTokensTable } from '@infrastructure/database/schema';
+import { usersTable, passwordResetTokensTable, emailVerificationTokensTable } from '@infrastructure/database/schema';
 
 @Injectable()
 export class DrizzleUserRepository implements UserRepositoryPort {
@@ -54,6 +54,8 @@ export class DrizzleUserRepository implements UserRepositoryPort {
         set: {
           username: user.username,
           avatar: user.avatar,
+          verified: user.verified,
+          passwordHash: user.passwordHash,
           updatedAt: new Date(),
         },
       });
@@ -66,6 +68,17 @@ export class DrizzleUserRepository implements UserRepositoryPort {
       .update(usersTable)
       .set({
         passwordHash: newPasswordHash,
+        verified: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, userId));
+  }
+
+  async markUserVerified(userId: string): Promise<void> {
+    await this.db
+      .update(usersTable)
+      .set({
+        verified: true,
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, userId));
@@ -100,6 +113,39 @@ export class DrizzleUserRepository implements UserRepositoryPort {
       .update(passwordResetTokensTable)
       .set({ used: true })
       .where(eq(passwordResetTokensTable.token, token));
+  }
+
+  async createEmailVerificationToken(token: string, userId: string, email: string, expiresAt: Date): Promise<void> {
+    await this.db.insert(emailVerificationTokensTable).values({
+      token,
+      userId,
+      email,
+      expiresAt,
+      used: false,
+    });
+  }
+
+  async findEmailVerificationToken(token: string): Promise<{ userId: string; email: string; expiresAt: Date; used: boolean } | null> {
+    const rows = await this.db
+      .select()
+      .from(emailVerificationTokensTable)
+      .where(eq(emailVerificationTokensTable.token, token))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    return {
+      userId: rows[0].userId,
+      email: rows[0].email,
+      expiresAt: rows[0].expiresAt,
+      used: rows[0].used,
+    };
+  }
+
+  async markEmailVerificationTokenUsed(token: string): Promise<void> {
+    await this.db
+      .update(emailVerificationTokensTable)
+      .set({ used: true })
+      .where(eq(emailVerificationTokensTable.token, token));
   }
 
   private mapToDomain(row: typeof usersTable.$inferSelect): User {

@@ -740,8 +740,11 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const resetToken = urlParams.get('reset') || urlParams.get('token');
+    const verifyEmailToken = urlParams.get('verifyEmail') || urlParams.get('verify');
 
-    if (resetToken) {
+    if (verifyEmailToken) {
+      openConfirmEmailModal(verifyEmailToken);
+    } else if (resetToken) {
       openResetPasswordModal(resetToken);
     } else if (!token && !refreshToken) {
       if (typeof window.showThreeIntro === 'function') {
@@ -819,7 +822,10 @@
       }
     }
     const resetToken = params.get('reset') || params.get('token');
-    if (resetToken) {
+    const verifyEmailToken = params.get('verifyEmail') || params.get('verify');
+    if (verifyEmailToken) {
+      openConfirmEmailModal(verifyEmailToken);
+    } else if (resetToken) {
       openResetPasswordModal(resetToken);
     }
   }
@@ -880,6 +886,58 @@
             createdAt: msg.timestamp,
             timestamp: msg.timestamp,
           });
+        }
+      } else if (packet.op === 0 && packet.t === 'MESSAGE_UPDATE') {
+        const msg = packet.d;
+        const msgEls = document.querySelectorAll(`[data-message-id="${msg.id}"], [data-msg-id="${msg.id}"]`);
+        msgEls.forEach((el) => {
+          el.setAttribute('data-raw-content', msg.content || '');
+          const textEl = el.querySelector('.message-text');
+          if (textEl) {
+            const { formattedHtml, urls } = formatMessageAndLinks(msg.content || '');
+            textEl.innerHTML = `${formattedHtml} <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(editado)</span>`;
+            const previewsContainer = el.querySelector('.message-previews-container');
+            if (previewsContainer) {
+              previewsContainer.innerHTML = '';
+              if (urls.length > 0) renderLinkPreviews(previewsContainer, urls);
+            }
+          }
+        });
+      } else if (packet.op === 0 && packet.t === 'MESSAGE_DELETE') {
+        const { id } = packet.d || {};
+        if (id) {
+          document.querySelectorAll(`[data-message-id="${id}"], [data-msg-id="${id}"]`).forEach((el) => el.remove());
+        }
+      } else if (packet.op === 0 && (packet.t === 'CHANNEL_CREATE' || packet.t === 'CHANNEL_UPDATE' || packet.t === 'CHANNEL_DELETE')) {
+        const chData = packet.d || {};
+        if (currentGuild && chData.guildId === currentGuild.id) {
+          if (packet.t === 'CHANNEL_UPDATE' && currentChannel && currentChannel.id === chData.id) {
+            currentChannel.name = chData.name;
+            if (chatHeaderTitleEl) {
+              if (currentChannel.type === 2) {
+                chatHeaderTitleEl.innerHTML = `${escapeHtml(chData.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Canal de Voz</span>`;
+              } else {
+                chatHeaderTitleEl.textContent = chData.name;
+              }
+            }
+            if (connectedVoiceChannel && connectedVoiceChannel.id === chData.id) {
+              connectedVoiceChannel.name = chData.name;
+              if (connectedChannelNameEl) connectedChannelNameEl.textContent = chData.name;
+            }
+          }
+          if (packet.t === 'CHANNEL_DELETE') {
+            if (connectedVoiceChannel && connectedVoiceChannel.id === chData.id) {
+              leaveVoiceChannel(true);
+            }
+            if (currentChannel && currentChannel.id === chData.id) {
+              currentChannel = null;
+            }
+          }
+          api(`/guilds/${currentGuild.id}/channels`).then((channels) => renderChannels(channels)).catch(() => {});
+        }
+      } else if (packet.op === 0 && packet.t === 'DM_CHANNEL_CREATE') {
+        if (!currentGuild && currentUser && packet.d?.participants?.includes(currentUser.id)) {
+          loadDirectMessagesHome();
         }
       } else if (packet.op === 0 && packet.t === 'VOICE_STATES_SYNC') {
         voiceStates = packet.d || [];
@@ -1238,18 +1296,39 @@
           const item = document.createElement('div');
           item.className = 'member-item';
           item.style.cursor = 'pointer';
-          item.title = 'Clique para gerenciar cargos deste membro';
+          item.style.justifyContent = 'space-between';
+          item.title = 'Clique para gerenciar cargos ou botão direito para Mensagem Direta';
+          const isMe = currentUser && m.id === currentUser.id;
           item.onclick = () => openMemberRolesModal(m.id, m.username, m.avatar);
+          item.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openMemberContextMenu(e, m);
+          };
           item.innerHTML = `
-            <div class="avatar-wrapper">
-              ${m.avatar ? `<img src="${escapeHtml(m.avatar)}" class="avatar" style="object-fit: cover; border-radius: 50%; width: 32px; height: 32px;" />` : `<div class="avatar">${initials}</div>`}
-              <div class="status-dot ${cfg.dotClass}"></div>
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+              <div class="avatar-wrapper">
+                ${m.avatar ? `<img src="${escapeHtml(m.avatar)}" class="avatar" style="object-fit: cover; border-radius: 50%; width: 32px; height: 32px;" />` : `<div class="avatar">${initials}</div>`}
+                <div class="status-dot ${cfg.dotClass}"></div>
+              </div>
+              <div style="display: flex; flex-direction: column; min-width: 0;">
+                <span class="member-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(m.username)}</span>
+                ${m.durationText ? `<span style="font-size: 10px; color: var(--text-muted);">${escapeHtml(cfg.title)} (${m.durationText})</span>` : ''}
+              </div>
             </div>
-            <div style="display: flex; flex-direction: column;">
-              <span class="member-name">${escapeHtml(m.username)}</span>
-              ${m.durationText ? `<span style="font-size: 10px; color: var(--text-muted);">${escapeHtml(cfg.title)} (${m.durationText})</span>` : ''}
-            </div>
+            ${!isMe ? `
+              <button type="button" class="member-dm-quick-btn" title="Enviar Mensagem Direta para ${escapeHtml(m.username)}" style="background: rgba(255,255,255,0.06); border: none; color: var(--text-muted); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
+                ${SVGS.CHAT}
+              </button>
+            ` : ''}
           `;
+          const dmQuickBtn = item.querySelector('.member-dm-quick-btn');
+          if (dmQuickBtn) {
+            dmQuickBtn.onclick = (ev) => {
+              ev.stopPropagation();
+              startDirectMessageWithUser(m.id, m.username, m.avatar, m.discriminator);
+            };
+          }
           container.appendChild(item);
         });
       }
@@ -1888,19 +1967,391 @@
     }
   }
 
-  function selectHome() {
+  // Collapsible Category State (Text & Voice Channels)
+  let collapsedCategories = { text: false, voice: false };
+  try {
+    const savedCollapsed = JSON.parse(localStorage.getItem('synccord_collapsed_categories') || 'null');
+    if (savedCollapsed && typeof savedCollapsed === 'object') {
+      collapsedCategories = { ...collapsedCategories, ...savedCollapsed };
+    }
+  } catch {}
+
+  let activeDmChannels = [];
+  let mutualContacts = [];
+  let activeChannelContextMenu = null;
+  let activeMemberContextMenu = null;
+
+  async function selectHome(autoOpenDmChannelId = null) {
     currentGuild = null;
     serverNameEl.textContent = 'Mensagens Diretas';
-    channelListEl.innerHTML = '<div style="padding: 16px; font-size: 13px; color: var(--text-muted);">Amigos & DMs</div>';
-    chatHeaderTitleEl.textContent = 'Início';
-    if (chatHeaderIconEl) chatHeaderIconEl.innerHTML = SVGS.HASH;
-    chatMessagesEl.innerHTML = '<div style="padding: 32px; text-align: center; color: var(--text-muted);">Selecione um servidor à esquerda ou crie um novo clicando no "+".</div>';
     if (voiceChatBannerEl) voiceChatBannerEl.style.display = 'none';
     if (voiceCallStageEl) voiceCallStageEl.style.display = 'none';
-    renderMembersList();
+    if (chatMessagesEl) chatMessagesEl.style.display = 'flex';
+
+    // Update active indicator on guild sidebar
+    document.querySelectorAll('.guild-sidebar .guild-icon').forEach((el) => {
+      el.classList.toggle('active', el.classList.contains('home'));
+    });
+
+    await loadDirectMessagesHome(autoOpenDmChannelId);
+  }
+  window.selectHome = selectHome;
+
+  async function loadDirectMessagesHome(autoOpenDmChannelId = null) {
+    try {
+      const [dms, contacts] = await Promise.all([
+        api('/users/@me/channels').catch(() => []),
+        api('/users/@me/friends').catch(() => []),
+      ]);
+      activeDmChannels = dms || [];
+      mutualContacts = contacts || [];
+    } catch {
+      activeDmChannels = [];
+      mutualContacts = [];
+    }
+
+    renderDirectMessagesSidebar();
+    renderDirectMessagesRightContacts();
+
+    if (autoOpenDmChannelId) {
+      const targetDm = activeDmChannels.find((d) => d.id === autoOpenDmChannelId);
+      if (targetDm) {
+        selectDmChannel(targetDm);
+        return;
+      }
+    }
+
+    if (currentChannel && currentChannel.type === 1) {
+      const stillExists = activeDmChannels.find((d) => d.id === currentChannel.id);
+      if (stillExists) {
+        selectDmChannel(stillExists);
+        return;
+      }
+    }
+
+    renderFriendsCentralStage();
   }
 
-  // Render Channel list with Create buttons on categories
+  function renderDirectMessagesSidebar() {
+    channelListEl.innerHTML = '';
+
+    // Friends / Central Dashboard Button
+    const friendsNavItem = document.createElement('div');
+    const isFriendsStageActive = !currentChannel || currentChannel.type !== 1;
+    friendsNavItem.className = `channel-item ${isFriendsStageActive ? 'active' : ''}`;
+    friendsNavItem.style.marginBottom = '8px';
+    friendsNavItem.innerHTML = `
+      <div class="channel-main" style="gap: 10px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+        </svg>
+        <span style="font-weight: 700;">Amigos</span>
+      </div>
+    `;
+    friendsNavItem.onclick = () => {
+      currentChannel = null;
+      renderDirectMessagesSidebar();
+      renderFriendsCentralStage();
+    };
+    channelListEl.appendChild(friendsNavItem);
+
+    // Direct Messages Header
+    const dmCat = document.createElement('div');
+    dmCat.className = 'channel-category';
+    dmCat.innerHTML = `<span>MENSAGENS DIRETAS</span>`;
+    channelListEl.appendChild(dmCat);
+
+    // Build combined list of open DMs + mutual friends so user can click any friend directly
+    const renderedRecipientIds = new Set();
+
+    activeDmChannels.forEach((dm) => {
+      const r = dm.recipient;
+      if (!r) return;
+      renderedRecipientIds.add(r.id);
+      const isSelected = currentChannel && currentChannel.id === dm.id;
+      const status = memberPresences[r.id]?.status || (voiceStates.some((s) => s.user?.id === r.id) ? 'online' : 'offline');
+      const dotClass = status === 'offline' ? 'invisible' : status;
+      const initials = (r.username || '??').substring(0, 2).toUpperCase();
+
+      const item = document.createElement('div');
+      item.className = `channel-item dm-channel-item ${isSelected ? 'active' : ''}`;
+      item.style.padding = '6px 8px';
+      item.innerHTML = `
+        <div class="channel-main" style="gap: 10px;">
+          <div class="avatar-wrapper" style="width: 32px; height: 32px;">
+            ${r.avatar ? `<img src="${escapeHtml(r.avatar)}" class="avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" />` : `<div class="avatar" style="width: 32px; height: 32px; font-size: 12px;">${initials}</div>`}
+            <div class="status-dot ${dotClass}"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <span style="font-size: 14px; font-weight: 600; color: var(--text-header); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(r.username)}</span>
+            <span style="font-size: 11px; color: var(--text-muted);">#${escapeHtml(r.discriminator || '0001')}</span>
+          </div>
+        </div>
+      `;
+      item.onclick = () => selectDmChannel(dm);
+      channelListEl.appendChild(item);
+    });
+
+    mutualContacts.forEach((friend) => {
+      if (renderedRecipientIds.has(friend.id)) return;
+      const status = memberPresences[friend.id]?.status || (voiceStates.some((s) => s.user?.id === friend.id) ? 'online' : 'offline');
+      const dotClass = status === 'offline' ? 'invisible' : status;
+      const initials = (friend.username || '??').substring(0, 2).toUpperCase();
+
+      const item = document.createElement('div');
+      item.className = 'channel-item dm-channel-item';
+      item.style.padding = '6px 8px';
+      item.title = `Clique para iniciar Mensagem Direta com ${friend.username}`;
+      item.innerHTML = `
+        <div class="channel-main" style="gap: 10px;">
+          <div class="avatar-wrapper" style="width: 32px; height: 32px;">
+            ${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" class="avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" />` : `<div class="avatar" style="width: 32px; height: 32px; font-size: 12px;">${initials}</div>`}
+            <div class="status-dot ${dotClass}"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <span style="font-size: 14px; font-weight: 600; color: var(--text-normal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(friend.username)}</span>
+            <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Amigo em comum</span>
+          </div>
+        </div>
+      `;
+      item.onclick = () => startDirectMessageWithUser(friend.id, friend.username, friend.avatar, friend.discriminator);
+      channelListEl.appendChild(item);
+    });
+
+    if (activeDmChannels.length === 0 && mutualContacts.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.style.cssText = 'padding: 16px 8px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;';
+      emptyEl.textContent = 'Nenhuma conversa direta iniciada ainda. Entre em um servidor para encontrar amigos em comum!';
+      channelListEl.appendChild(emptyEl);
+    }
+  }
+
+  function renderDirectMessagesRightContacts() {
+    const container = document.getElementById('members-list-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const catHeader = document.createElement('div');
+    catHeader.className = 'member-category';
+    catHeader.textContent = `AMIGOS EM COMUM — ${mutualContacts.length}`;
+    container.appendChild(catHeader);
+
+    if (mutualContacts.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding: 12px 8px; font-size: 12px; color: var(--text-muted);';
+      empty.textContent = 'Seus amigos de servidores em comum aparecerão aqui.';
+      container.appendChild(empty);
+      return;
+    }
+
+    mutualContacts.forEach((m) => {
+      const status = memberPresences[m.id]?.status || (voiceStates.some((s) => s.user?.id === m.id) ? 'online' : 'invisible');
+      const initials = (m.username || '??').substring(0, 2).toUpperCase();
+      const item = document.createElement('div');
+      item.className = 'member-item';
+      item.style.cursor = 'pointer';
+      item.title = `Conversar por Mensagem Direta com ${m.username}`;
+      item.onclick = () => startDirectMessageWithUser(m.id, m.username, m.avatar, m.discriminator);
+      item.innerHTML = `
+        <div class="avatar-wrapper">
+          ${m.avatar ? `<img src="${escapeHtml(m.avatar)}" class="avatar" style="object-fit: cover; border-radius: 50%; width: 32px; height: 32px;" />` : `<div class="avatar">${initials}</div>`}
+          <div class="status-dot ${status}"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+          <span class="member-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(m.username)}</span>
+          <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml((m.mutualGuildNames || []).join(', '))}</span>
+        </div>
+      `;
+      container.appendChild(item);
+    });
+  }
+
+  function renderFriendsCentralStage() {
+    if (chatHeaderIconEl) {
+      chatHeaderIconEl.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+        </svg>
+      `;
+    }
+    chatHeaderTitleEl.textContent = 'Amigos & Mensagens Diretas';
+    if (chatInputWrapperEl) chatInputWrapperEl.style.display = 'none';
+
+    const allContactsMap = new Map();
+    mutualContacts.forEach((c) => allContactsMap.set(c.id, c));
+    activeDmChannels.forEach((d) => {
+      if (d.recipient && !allContactsMap.has(d.recipient.id)) {
+        allContactsMap.set(d.recipient.id, {
+          ...d.recipient,
+          mutualGuildNames: ['Mensagem Direta'],
+        });
+      }
+    });
+    const friendsList = Array.from(allContactsMap.values());
+
+    chatMessagesEl.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding: 24px; display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 820px; margin: 0 auto;';
+
+    wrapper.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+        <div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--text-header);">Seus Amigos e Contatos em Comum</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">Envie mensagens diretas instantaneamente sem precisar selecionar um servidor.</div>
+        </div>
+        <span style="font-size: 12px; font-weight: 700; background: rgba(88,101,242,0.2); color: #fff; padding: 4px 10px; border-radius: 12px;">${friendsList.length} Contatos</span>
+      </div>
+      <div id="friends-directory-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    `;
+
+    const listContainer = wrapper.querySelector('#friends-directory-list');
+    if (friendsList.length === 0) {
+      listContainer.innerHTML = `
+        <div style="padding: 40px 20px; text-align: center; background: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="font-size: 16px; font-weight: 700; color: var(--text-header); margin-bottom: 6px;">Nenhum amigo em comum encontrado ainda</div>
+          <div style="font-size: 13px; color: var(--text-muted);">Participe ou convide amigos para um servidor para conversar diretamente com eles por aqui!</div>
+        </div>
+      `;
+    } else {
+      friendsList.forEach((friend) => {
+        const status = memberPresences[friend.id]?.status || (voiceStates.some((s) => s.user?.id === friend.id) ? 'online' : 'invisible');
+        const statusLabel = status === 'online' ? 'Disponível' : (status === 'dnd' ? 'Não Perturbar' : (status === 'idle' ? 'Ausente' : 'Offline'));
+        const initials = (friend.username || '??').substring(0, 2).toUpperCase();
+
+        const row = document.createElement('div');
+        row.className = 'friend-directory-item';
+        row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); cursor: pointer; transition: background 0.15s ease;';
+        row.onmouseenter = () => { row.style.background = 'var(--bg-accent)'; };
+        row.onmouseleave = () => { row.style.background = 'var(--bg-secondary)'; };
+        row.onclick = () => startDirectMessageWithUser(friend.id, friend.username, friend.avatar, friend.discriminator);
+
+        row.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="avatar-wrapper" style="width: 40px; height: 40px;">
+              ${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" class="avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />` : `<div class="avatar" style="width: 40px; height: 40px;">${initials}</div>`}
+              <div class="status-dot ${status}"></div>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 15px; font-weight: 700; color: var(--text-header);">${escapeHtml(friend.username)}</span>
+                <span style="font-size: 12px; color: var(--text-muted);">#${escapeHtml(friend.discriminator || '0001')}</span>
+              </div>
+              <span style="font-size: 12px; color: var(--text-muted);">${statusLabel} • ${escapeHtml((friend.mutualGuildNames || ['Amigo']).join(', '))}</span>
+            </div>
+          </div>
+          <button type="button" class="btn-primary" style="padding: 8px 16px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; border-radius: 6px;">
+            ${SVGS.CHAT}
+            <span>Enviar Mensagem</span>
+          </button>
+        `;
+        listContainer.appendChild(row);
+      });
+    }
+
+    chatMessagesEl.appendChild(wrapper);
+  }
+
+  async function startDirectMessageWithUser(recipientId, username, avatar, discriminator) {
+    if (!recipientId || (currentUser && recipientId === currentUser.id)) return;
+    try {
+      const dm = await api('/users/@me/channels', {
+        method: 'POST',
+        body: JSON.stringify({ recipientId }),
+      });
+      if (dm && dm.id) {
+        currentGuild = null;
+        serverNameEl.textContent = 'Mensagens Diretas';
+        document.querySelectorAll('.guild-sidebar .guild-icon').forEach((el) => {
+          el.classList.toggle('active', el.classList.contains('home'));
+        });
+        const existsIdx = activeDmChannels.findIndex((d) => d.id === dm.id);
+        if (existsIdx >= 0) {
+          activeDmChannels[existsIdx] = dm;
+        } else {
+          activeDmChannels.unshift(dm);
+        }
+        await selectDmChannel(dm);
+        renderDirectMessagesSidebar();
+        renderDirectMessagesRightContacts();
+      }
+    } catch (err) {
+      alert(`Erro ao abrir mensagem direta com ${username || 'usuário'}: ${err.message}`);
+    }
+  }
+  window.startDirectMessageWithUser = startDirectMessageWithUser;
+
+  async function selectDmChannel(dm) {
+    if (!dm || !dm.id) return;
+    if (currentChannel && socket) {
+      socket.emit('channel:leave', currentChannel.id);
+    }
+
+    const r = dm.recipient || { username: dm.name || 'Amigo', discriminator: '0001', avatar: null };
+    currentChannel = {
+      id: dm.id,
+      guildId: null,
+      name: r.username,
+      type: 1,
+      recipient: r,
+    };
+
+    renderDirectMessagesSidebar();
+
+    if (chatHeaderIconEl) {
+      chatHeaderIconEl.innerHTML = `<span style="font-size: 18px; font-weight: 800; color: var(--text-muted);">@</span>`;
+    }
+    chatHeaderTitleEl.innerHTML = `${escapeHtml(r.username)} <span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">#${escapeHtml(r.discriminator || '0001')}</span>`;
+    if (chatInputWrapperEl) chatInputWrapperEl.style.display = 'block';
+    if (chatInputEl) {
+      chatInputEl.placeholder = `Conversar com @${r.username}`;
+      chatInputEl.focus();
+    }
+
+    if (voiceChatBannerEl) voiceChatBannerEl.style.display = 'none';
+    if (voiceCallStageEl) voiceCallStageEl.style.display = 'none';
+    if (chatMessagesEl) chatMessagesEl.style.display = 'flex';
+
+    if (socket) {
+      socket.emit('channel:join', dm.id);
+    }
+
+    try {
+      const messages = await api(`/channels/${dm.id}/messages?limit=50`);
+      chatMessagesEl.innerHTML = '';
+      if (!messages || messages.length === 0) {
+        const welcome = document.createElement('div');
+        welcome.style.cssText = 'padding: 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;';
+        const initials = (r.username || '??').substring(0, 2).toUpperCase();
+        welcome.innerHTML = `
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 12px; overflow: hidden;">
+            ${r.avatar ? `<img src="${escapeHtml(r.avatar)}" style="width: 100%; height: 100%; object-fit: cover;" />` : initials}
+          </div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--text-header);">${escapeHtml(r.username)}</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Este é o começo do seu histórico de mensagens diretas com <strong>@${escapeHtml(r.username)}</strong>.</div>
+        `;
+        chatMessagesEl.appendChild(welcome);
+      } else {
+        messages.forEach(appendMessage);
+      }
+      scrollToBottom();
+    } catch (err) {
+      console.error('Error loading DM messages:', err);
+    }
+  }
+  window.selectDmChannel = selectDmChannel;
+
+  function toggleChannelCategoryCollapse(categoryKey) {
+    collapsedCategories[categoryKey] = !collapsedCategories[categoryKey];
+    try {
+      localStorage.setItem('synccord_collapsed_categories', JSON.stringify(collapsedCategories));
+    } catch {}
+    if (currentGuild) {
+      api(`/guilds/${currentGuild.id}/channels`).then((channels) => renderChannels(channels)).catch(() => {});
+    }
+  }
+  window.toggleChannelCategoryCollapse = toggleChannelCategoryCollapse;
+
+  // Render Channel list with Collapsible Arrows, Create buttons, and Right-Click Context Menu
   function renderChannels(channels) {
     channelListEl.innerHTML = '';
     const safeChannels = channels || [];
@@ -1908,13 +2359,25 @@
     const textChannels = safeChannels.filter((c) => c.type === 0);
     const voiceChannels = safeChannels.filter((c) => c.type === 2);
 
-    // 1. Text Channels Category Header with "+" Button
+    const isTextCollapsed = !!collapsedCategories.text;
+    const isVoiceCollapsed = !!collapsedCategories.voice;
+
+    // 1. Text Channels Category Header with Collapsible Arrow and "+" Button
     const textCat = document.createElement('div');
-    textCat.className = 'channel-category';
+    textCat.className = `channel-category ${isTextCollapsed ? 'collapsed' : ''}`;
+    textCat.style.cursor = 'pointer';
+    textCat.title = isTextCollapsed ? 'Clique para mostrar os Canais de Texto' : 'Clique para recolher os Canais de Texto';
     textCat.innerHTML = `
-      <span>▼ CANAIS DE TEXTO</span>
+      <span class="category-header-label" style="display: flex; align-items: center; gap: 6px; user-select: none;">
+        <span class="category-collapse-arrow" style="display: inline-block; transition: transform 0.15s ease; transform: rotate(${isTextCollapsed ? '-90deg' : '0deg'});">▼</span>
+        <span>CANAIS DE TEXTO</span>
+      </span>
       <button class="channel-category-add-btn" title="Criar Canal de Texto">+</button>
     `;
+    textCat.onclick = (e) => {
+      if (e.target.closest('.channel-category-add-btn')) return;
+      toggleChannelCategoryCollapse('text');
+    };
     textCat.querySelector('.channel-category-add-btn').onclick = (e) => {
       e.stopPropagation();
       openCreateChannelModal(0);
@@ -1922,25 +2385,43 @@
     channelListEl.appendChild(textCat);
 
     textChannels.forEach((c) => {
+      const isSelected = currentChannel && currentChannel.id === c.id;
+      if (isTextCollapsed && !isSelected) return;
+
       const item = document.createElement('div');
-      item.className = `channel-item ${currentChannel && currentChannel.id === c.id ? 'active' : ''}`;
+      item.className = `channel-item ${isSelected ? 'active' : ''}`;
+      item.setAttribute('data-channel-id', c.id);
       item.innerHTML = `
         <div class="channel-main">
           <span class="channel-icon">${SVGS.HASH}</span>
-          <span>${escapeHtml(c.name)}</span>
+          <span class="channel-name">${escapeHtml(c.name)}</span>
         </div>
       `;
       item.onclick = () => selectChannel(c);
+      item.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openChannelContextMenu(e, c);
+      };
       channelListEl.appendChild(item);
     });
 
-    // 2. Voice Channels Category Header with "+" Button
+    // 2. Voice Channels Category Header with Collapsible Arrow and "+" Button
     const voiceCat = document.createElement('div');
-    voiceCat.className = 'channel-category';
+    voiceCat.className = `channel-category ${isVoiceCollapsed ? 'collapsed' : ''}`;
+    voiceCat.style.cursor = 'pointer';
+    voiceCat.title = isVoiceCollapsed ? 'Clique para mostrar os Canais de Voz' : 'Clique para recolher os Canais de Voz';
     voiceCat.innerHTML = `
-      <span>▼ CANAIS DE VOZ</span>
+      <span class="category-header-label" style="display: flex; align-items: center; gap: 6px; user-select: none;">
+        <span class="category-collapse-arrow" style="display: inline-block; transition: transform 0.15s ease; transform: rotate(${isVoiceCollapsed ? '-90deg' : '0deg'});">▼</span>
+        <span>CANAIS DE VOZ</span>
+      </span>
       <button class="channel-category-add-btn" title="Criar Canal de Voz">+</button>
     `;
+    voiceCat.onclick = (e) => {
+      if (e.target.closest('.channel-category-add-btn')) return;
+      toggleChannelCategoryCollapse('voice');
+    };
     voiceCat.querySelector('.channel-category-add-btn').onclick = (e) => {
       e.stopPropagation();
       openCreateChannelModal(2);
@@ -1948,14 +2429,18 @@
     channelListEl.appendChild(voiceCat);
 
     voiceChannels.forEach((c) => {
+      const isVoiceConnected = connectedVoiceChannel && connectedVoiceChannel.id === c.id;
+      const isCurrentChat = currentChannel && currentChannel.id === c.id;
+      const hasUsersInChannel = voiceStates.some((s) => s.channelId === c.id);
+
+      if (isVoiceCollapsed && !isVoiceConnected && !isCurrentChat && !hasUsersInChannel) return;
+
       const wrapper = document.createElement('div');
       wrapper.className = 'channel-wrapper';
 
-      const isVoiceConnected = connectedVoiceChannel && connectedVoiceChannel.id === c.id;
-      const isCurrentChat = currentChannel && currentChannel.id === c.id;
-
       const item = document.createElement('div');
       item.className = `channel-item ${isVoiceConnected || isCurrentChat ? 'active' : ''}`;
+      item.setAttribute('data-channel-id', c.id);
       item.innerHTML = `
         <div class="channel-main" title="Entrar no canal de voz ${escapeHtml(c.name)}">
           <span class="channel-icon">${SVGS.VOICE}</span>
@@ -1980,6 +2465,12 @@
       item.querySelector('.chat-btn').onclick = (e) => {
         e.stopPropagation();
         openVoiceChannelChat(c);
+      };
+
+      item.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openChannelContextMenu(e, c);
       };
 
       wrapper.appendChild(item);
@@ -3729,7 +4220,7 @@
       }
 
       // 2. YouTube Video
-      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_\-]{11})/i);
+      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch && ytMatch[1]) {
         const ytId = ytMatch[1];
         const ytEmbed = document.createElement('div');
@@ -3801,19 +4292,325 @@
     document.removeEventListener('click', closeMessageContextMenu);
   }
 
-  function openMessageContextMenu(e, content, messageId) {
+  function closeChannelContextMenu() {
+    if (activeChannelContextMenu) {
+      activeChannelContextMenu.remove();
+      activeChannelContextMenu = null;
+    }
+    document.removeEventListener('click', closeChannelContextMenu);
+  }
+
+  function closeMemberContextMenu() {
+    if (activeMemberContextMenu) {
+      activeMemberContextMenu.remove();
+      activeMemberContextMenu = null;
+    }
+    document.removeEventListener('click', closeMemberContextMenu);
+  }
+
+  function openChannelContextMenu(e, channel) {
     if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+    closeChannelContextMenu();
+    closeMessageContextMenu();
+    closeMemberContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+    if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
+
+    if (!channel || !channel.id) return;
+    const isVoice = channel.type === 2;
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '230px';
+    menu.style.left = `${Math.min(e.clientX || 120, window.innerWidth - 240)}px`;
+    menu.style.top = `${Math.min(e.clientY || 120, window.innerHeight - 200)}px`;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" id="chan-ctx-edit">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+          </svg>
+          <span>Alterar Nome / Editar Canal</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="chan-ctx-invite">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${SVGS.INVITE}
+          <span>Convidar Pessoas</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="chan-ctx-copy-id">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-weight: 800; font-size: 13px;">ID</span>
+          <span>Copiar ID do Canal</span>
+        </div>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" id="chan-ctx-delete" style="color: #fa777c;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+          <span>Excluir Canal ${isVoice ? 'de Voz' : 'de Texto'}</span>
+        </div>
+      </div>
+    `;
+
+    menu.querySelector('#chan-ctx-edit').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      openEditChannelModal(channel);
+    });
+
+    menu.querySelector('#chan-ctx-invite').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      openInviteModal(channel);
+    });
+
+    menu.querySelector('#chan-ctx-copy-id').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      copyMessageText(channel.id);
+      showToastNotification('ID do canal copiado!');
+    });
+
+    menu.querySelector('#chan-ctx-delete').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      confirmDeleteChannel(channel);
+    });
+
+    document.body.appendChild(menu);
+    activeChannelContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeChannelContextMenu);
+    }, 10);
+  }
+  window.openChannelContextMenu = openChannelContextMenu;
+
+  function openEditChannelModal(channel) {
+    if (!channel || !channel.id) return;
+    const modal = document.getElementById('edit-channel-modal');
+    const idInput = document.getElementById('edit-channel-id-input');
+    const typeInput = document.getElementById('edit-channel-type-input');
+    const nameInput = document.getElementById('edit-channel-name-input');
+    const prefixIcon = document.getElementById('edit-channel-prefix-icon');
+    const titleEl = document.getElementById('edit-channel-modal-title');
+    const errorEl = document.getElementById('edit-channel-error');
+
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    }
+    if (idInput) idInput.value = channel.id;
+    if (typeInput) typeInput.value = String(channel.type || 0);
+    if (prefixIcon) prefixIcon.textContent = channel.type === 2 ? '🔊' : '#';
+    if (titleEl) titleEl.textContent = channel.type === 2 ? 'Alterar Nome do Canal de Voz' : 'Alterar Nome do Canal de Texto';
+    if (nameInput) {
+      nameInput.value = channel.name || '';
+      setTimeout(() => {
+        nameInput.focus();
+        nameInput.select();
+      }, 40);
+    }
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+    }
+  }
+  window.openEditChannelModal = openEditChannelModal;
+
+  function closeEditChannelModal() {
+    const modal = document.getElementById('edit-channel-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.classList.remove('open');
+    }
+  }
+  window.closeEditChannelModal = closeEditChannelModal;
+
+  async function submitEditChannelModal() {
+    const idInput = document.getElementById('edit-channel-id-input');
+    const nameInput = document.getElementById('edit-channel-name-input');
+    const errorEl = document.getElementById('edit-channel-error');
+    const channelId = idInput ? idInput.value.trim() : '';
+    const newName = nameInput ? nameInput.value.trim() : '';
+
+    if (!newName) {
+      if (errorEl) {
+        errorEl.textContent = 'O nome do canal não pode ficar vazio.';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
+
+    try {
+      const updated = await api(`/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: newName }),
+      });
+      closeEditChannelModal();
+      if (currentChannel && currentChannel.id === channelId && updated) {
+        currentChannel.name = updated.name;
+        if (chatHeaderTitleEl) {
+          if (currentChannel.type === 2) {
+            chatHeaderTitleEl.innerHTML = `${escapeHtml(updated.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Canal de Voz</span>`;
+          } else {
+            chatHeaderTitleEl.textContent = updated.name;
+          }
+        }
+      }
+      if (connectedVoiceChannel && connectedVoiceChannel.id === channelId && updated) {
+        connectedVoiceChannel.name = updated.name;
+        if (connectedChannelNameEl) connectedChannelNameEl.textContent = updated.name;
+      }
+      if (currentGuild) {
+        const channels = await api(`/guilds/${currentGuild.id}/channels`);
+        renderChannels(channels);
+      }
+      showToastNotification('Nome do canal atualizado com sucesso!');
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = err.message || 'Erro ao renomear canal.';
+        errorEl.style.display = 'block';
+      }
+    }
+  }
+  window.submitEditChannelModal = submitEditChannelModal;
+
+  function confirmDeleteChannel(channel) {
+    if (!channel || !channel.id) return;
+    const isVoice = channel.type === 2;
+    const displayPrefix = isVoice ? '🔊 ' : '#';
+
+    showConfirmDialog({
+      title: 'Excluir Canal',
+      message: `Tem certeza de que deseja excluir o canal <strong>${displayPrefix}${escapeHtml(channel.name)}</strong>? Esta ação não pode ser desfeita.`,
+      confirmText: 'Excluir Canal',
+      cancelText: 'Cancelar',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api(`/channels/${channel.id}`, { method: 'DELETE' });
+          if (connectedVoiceChannel && connectedVoiceChannel.id === channel.id) {
+            leaveVoiceChannel(true);
+          }
+          if (currentChannel && currentChannel.id === channel.id) {
+            currentChannel = null;
+          }
+          if (currentGuild) {
+            const channels = await api(`/guilds/${currentGuild.id}/channels`);
+            renderChannels(channels);
+          }
+          showToastNotification(`Canal ${channel.name} excluído com sucesso!`);
+        } catch (err) {
+          alert(`Erro ao excluir canal: ${err.message}`);
+        }
+      },
+    });
+  }
+  window.confirmDeleteChannel = confirmDeleteChannel;
+
+  function openMemberContextMenu(e, member) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+    closeMemberContextMenu();
+    closeChannelContextMenu();
     closeMessageContextMenu();
     if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
     if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
 
+    if (!member || !member.id) return;
+    const isMe = currentUser && member.id === currentUser.id;
+
     const menu = document.createElement('div');
     menu.className = 'voice-user-context-menu';
     menu.style.minWidth = '220px';
-    menu.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
-    menu.style.top = `${Math.min(e.clientY, window.innerHeight - 150)}px`;
+    menu.style.left = `${Math.min(e.clientX || 120, window.innerWidth - 230)}px`;
+    menu.style.top = `${Math.min(e.clientY || 120, window.innerHeight - 190)}px`;
 
     menu.innerHTML = `
+      ${!isMe ? `
+        <div class="context-menu-item" id="mem-ctx-dm">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${SVGS.CHAT}
+            <span>Enviar Mensagem Direta</span>
+          </div>
+        </div>
+        <div class="context-menu-divider"></div>
+      ` : ''}
+      <div class="context-menu-item" id="mem-ctx-roles">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>🛡️ Gerenciar Cargos</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="mem-ctx-copy-id">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span># Copiar ID do Usuário</span>
+        </div>
+      </div>
+    `;
+
+    const dmBtn = menu.querySelector('#mem-ctx-dm');
+    if (dmBtn) {
+      dmBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeMemberContextMenu();
+        startDirectMessageWithUser(member.id, member.username, member.avatar, member.discriminator);
+      });
+    }
+
+    menu.querySelector('#mem-ctx-roles').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeMemberContextMenu();
+      openMemberRolesModal(member.id, member.username, member.avatar);
+    });
+
+    menu.querySelector('#mem-ctx-copy-id').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeMemberContextMenu();
+      copyMessageText(member.id);
+      showToastNotification('ID do usuário copiado!');
+    });
+
+    document.body.appendChild(menu);
+    activeMemberContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeMemberContextMenu);
+    }, 10);
+  }
+  window.openMemberContextMenu = openMemberContextMenu;
+
+  function openMessageContextMenu(e, content, messageId, authorId) {
+    if (e && e.preventDefault) e.preventDefault();
+    closeMessageContextMenu();
+    closeChannelContextMenu();
+    closeMemberContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+    if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
+
+    const isMine = currentUser && authorId && String(authorId) === String(currentUser.id);
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '230px';
+    menu.style.left = `${Math.min(e.clientX, window.innerWidth - 240)}px`;
+    menu.style.top = `${Math.min(e.clientY, window.innerHeight - 210)}px`;
+
+    menu.innerHTML = `
+      ${isMine && messageId ? `
+        <div class="context-menu-item" id="msg-ctx-edit">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+            </svg>
+            <span>Editar Mensagem</span>
+          </div>
+        </div>
+      ` : ''}
       <div class="context-menu-item" id="msg-ctx-copy-text">
         <div style="display: flex; align-items: center; gap: 8px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -3831,7 +4628,36 @@
           <span>Copiar Link da Mensagem</span>
         </div>
       </div>
+      ${isMine && messageId ? `
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" id="msg-ctx-delete" style="color: #fa777c;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+            <span>Excluir Mensagem</span>
+          </div>
+        </div>
+      ` : ''}
     `;
+
+    const editBtn = menu.querySelector('#msg-ctx-edit');
+    if (editBtn) {
+      editBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeMessageContextMenu();
+        startInlineMessageEdit(messageId);
+      });
+    }
+
+    const delBtn = menu.querySelector('#msg-ctx-delete');
+    if (delBtn) {
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeMessageContextMenu();
+        confirmDeleteMessage(messageId);
+      });
+    }
 
     menu.querySelector('#msg-ctx-copy-text').addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -3853,6 +4679,112 @@
       document.addEventListener('click', closeMessageContextMenu);
     }, 10);
   }
+
+  function startInlineMessageEdit(messageId) {
+    if (!messageId) return;
+    const msgEl = document.querySelector(`[data-message-id="${messageId}"], [data-msg-id="${messageId}"]`);
+    if (!msgEl) return;
+    const textEl = msgEl.querySelector('.message-text');
+    if (!textEl || msgEl.querySelector('.inline-edit-message-box')) return;
+
+    const currentRaw = msgEl.getAttribute('data-raw-content') || '';
+    const originalHtml = textEl.innerHTML;
+
+    textEl.innerHTML = `
+      <div class="inline-edit-message-box" style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+        <input type="text" class="form-input inline-edit-input" value="${escapeHtml(currentRaw)}" style="background: var(--bg-tertiary); color: var(--text-header); font-size: 14px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--accent);" />
+        <div style="font-size: 11px; color: var(--text-muted);">
+          escape para <a href="javascript:void(0)" class="inline-edit-cancel" style="color: #00a8fc; text-decoration: none;">cancelar</a> • enter para <a href="javascript:void(0)" class="inline-edit-save" style="color: #00a8fc; text-decoration: none;">salvar</a>
+        </div>
+      </div>
+    `;
+
+    const input = textEl.querySelector('.inline-edit-input');
+    const cancelLink = textEl.querySelector('.inline-edit-cancel');
+    const saveLink = textEl.querySelector('.inline-edit-save');
+
+    const cancelEdit = () => {
+      textEl.innerHTML = originalHtml;
+    };
+
+    const saveEdit = async () => {
+      const newContent = input.value.trim();
+      if (!newContent || newContent === currentRaw) {
+        cancelEdit();
+        return;
+      }
+      const targetChannelId = msgEl.classList.contains('voice-message-item')
+        ? (activeVoiceChatChannel?.id || currentChannel?.id)
+        : (currentChannel?.id || activeVoiceChatChannel?.id);
+      if (!targetChannelId) {
+        cancelEdit();
+        return;
+      }
+      try {
+        await api(`/channels/${targetChannelId}/messages/${messageId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ content: newContent }),
+        });
+        msgEl.setAttribute('data-raw-content', newContent);
+        const { formattedHtml, urls } = formatMessageAndLinks(newContent);
+        textEl.innerHTML = `${formattedHtml} <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(editado)</span>`;
+        const previewsContainer = msgEl.querySelector('.message-previews-container');
+        if (previewsContainer) {
+          previewsContainer.innerHTML = '';
+          if (urls.length > 0) renderLinkPreviews(previewsContainer, urls);
+        }
+      } catch (err) {
+        alert(`Erro ao editar mensagem: ${err.message}`);
+        cancelEdit();
+      }
+    };
+
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveEdit();
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          cancelEdit();
+        }
+      });
+    }
+    if (cancelLink) cancelLink.onclick = cancelEdit;
+    if (saveLink) saveLink.onclick = saveEdit;
+  }
+  window.startInlineMessageEdit = startInlineMessageEdit;
+
+  function confirmDeleteMessage(messageId) {
+    if (!messageId) return;
+    const msgEl = document.querySelector(`[data-message-id="${messageId}"], [data-msg-id="${messageId}"]`);
+    const targetChannelId = msgEl?.classList.contains('voice-message-item')
+      ? (activeVoiceChatChannel?.id || currentChannel?.id)
+      : (currentChannel?.id || activeVoiceChatChannel?.id);
+    if (!targetChannelId) return;
+
+    showConfirmDialog({
+      title: 'Excluir Mensagem',
+      message: 'Tem certeza de que deseja excluir esta mensagem?',
+      confirmText: 'Excluir',
+      cancelText: 'Cancelar',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api(`/channels/${targetChannelId}/messages/${messageId}`, {
+            method: 'DELETE',
+          });
+          document.querySelectorAll(`[data-message-id="${messageId}"], [data-msg-id="${messageId}"]`).forEach((el) => el.remove());
+          showToastNotification('Mensagem excluída!');
+        } catch (err) {
+          alert(`Erro ao excluir mensagem: ${err.message}`);
+        }
+      },
+    });
+  }
+  window.confirmDeleteMessage = confirmDeleteMessage;
 
   let activeInputContextMenu = null;
 
@@ -3982,9 +4914,18 @@
     const rawContent = msg.content || '';
     el.setAttribute('data-raw-content', rawContent);
     const { formattedHtml, urls } = formatMessageAndLinks(rawContent);
+    const isEdited = Boolean(msg.editedAt || msg.edited_timestamp);
 
     el.innerHTML = `
       <div class="message-actions-bar">
+        ${isMine && msg.id ? `
+          <button class="message-action-btn edit-msg-btn" title="Editar Mensagem">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+            </svg>
+            <span>Editar</span>
+          </button>
+        ` : ''}
         <button class="message-action-btn copy-msg-btn" title="Copiar Mensagem">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
@@ -3998,10 +4939,18 @@
           <span class="author-name">${authorName}</span>
           <span class="message-time">${timeStr}</span>
         </div>
-        <div class="message-text">${formattedHtml}</div>
+        <div class="message-text">${formattedHtml}${isEdited ? ' <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(editado)</span>' : ''}</div>
         <div class="message-previews-container"></div>
       </div>
     `;
+
+    const editBtn = el.querySelector('.edit-msg-btn');
+    if (editBtn && msg.id) {
+      editBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        startInlineMessageEdit(msg.id);
+      });
+    }
 
     const copyBtn = el.querySelector('.copy-msg-btn');
     if (copyBtn) {
@@ -4453,10 +5402,30 @@
       if (msgItem && !target.closest('input, textarea, button, a, select')) {
         const rawText = msgItem.getAttribute('data-raw-content') || msgItem.querySelector('.message-text')?.innerText || '';
         const msgId = msgItem.getAttribute('data-message-id') || msgItem.getAttribute('data-msg-id');
-        openMessageContextMenu(e, rawText, msgId);
+        const msgAuthorId = msgItem.getAttribute('data-author-id');
+        openMessageContextMenu(e, rawText, msgId, msgAuthorId);
         return;
       }
     });
+
+    const editChannelModalEl = document.getElementById('edit-channel-modal');
+    if (editChannelModalEl) {
+      editChannelModalEl.addEventListener('click', (e) => {
+        if (e.target === editChannelModalEl) closeEditChannelModal();
+      });
+    }
+    const editChannelNameInput = document.getElementById('edit-channel-name-input');
+    if (editChannelNameInput) {
+      editChannelNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitEditChannelModal();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeEditChannelModal();
+        }
+      });
+    }
 
     // Confirmation Action Modal Buttons
     const confirmModalCancelBtn = document.getElementById('confirm-modal-cancel-btn');
@@ -4670,11 +5639,19 @@
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const isLogin = document.getElementById('auth-tab-login').classList.contains('active');
-      const email = document.getElementById('auth-email').value;
+      const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
-      const username = document.getElementById('auth-username').value;
+      const username = document.getElementById('auth-username').value.trim();
+      const feedbackBox = document.getElementById('auth-feedback-box');
+      const submitBtn = document.getElementById('auth-submit-btn');
+
+      if (feedbackBox) {
+        feedbackBox.style.display = 'none';
+        feedbackBox.innerHTML = '';
+      }
 
       try {
+        if (submitBtn) submitBtn.disabled = true;
         let res;
         if (isLogin) {
           res = await api('/auth/login', {
@@ -4684,8 +5661,23 @@
         } else {
           res = await api('/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ email, password, username }),
+            body: JSON.stringify({ email, username }),
           });
+        }
+
+        if (res.verificationRequired) {
+          if (feedbackBox) {
+            feedbackBox.style.display = 'block';
+            feedbackBox.style.background = 'rgba(35, 165, 90, 0.16)';
+            feedbackBox.style.border = '1px solid #23a55a';
+            feedbackBox.style.color = '#23a55a';
+            feedbackBox.innerHTML = `
+              <strong><i class="fa-solid fa-envelope-circle-check"></i> Verifique seu e-mail!</strong><br>
+              ${escapeHtml(res.message || `Enviamos um link de confirmação para ${email}. Acesse o link no seu e-mail para definir sua senha.`)}
+              ${res.emailPreviewUrl ? `<br><br><a href="${escapeHtml(res.emailPreviewUrl)}" target="_blank" rel="noopener noreferrer" style="color: #00a8fc; font-weight: 700; text-decoration: underline;">📬 Abrir Caixa de E-mail de Teste (Ethereal SMTP)</a>` : ''}
+            `;
+          }
+          return;
         }
 
         token = res.token;
@@ -4723,7 +5715,17 @@
           await loadGuilds();
         }
       } catch (err) {
-        alert(`Erro de autenticação: ${err.message}`);
+        if (feedbackBox) {
+          feedbackBox.style.display = 'block';
+          feedbackBox.style.background = 'rgba(242, 63, 67, 0.16)';
+          feedbackBox.style.border = '1px solid #f23f43';
+          feedbackBox.style.color = '#fa777c';
+          feedbackBox.textContent = err.message || 'Erro de autenticação.';
+        } else {
+          alert(`Erro de autenticação: ${err.message}`);
+        }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
   }
@@ -4872,15 +5874,28 @@
     const loginTab = document.getElementById('auth-tab-login');
     const registerTab = document.getElementById('auth-tab-register');
     const userGroup = document.getElementById('auth-username-group');
+    const userInput = document.getElementById('auth-username');
+    const pwGroup = document.getElementById('auth-password-group');
+    const pwInput = document.getElementById('auth-password');
+    const regNotice = document.getElementById('auth-register-email-notice');
+    const feedbackBox = document.getElementById('auth-feedback-box');
     const submitBtn = document.getElementById('auth-submit-btn');
 
     if (loginTab) loginTab.classList.toggle('active', isLogin);
     if (registerTab) registerTab.classList.toggle('active', !isLogin);
     if (userGroup) userGroup.style.display = isLogin ? 'none' : 'flex';
+    if (userInput) userInput.required = !isLogin;
+    if (pwGroup) pwGroup.style.display = isLogin ? 'flex' : 'none';
+    if (pwInput) pwInput.required = isLogin;
+    if (regNotice) regNotice.style.display = isLogin ? 'none' : 'block';
+    if (feedbackBox) {
+      feedbackBox.style.display = 'none';
+      feedbackBox.innerHTML = '';
+    }
     if (submitBtn) {
       submitBtn.innerHTML = isLogin ?
         '<i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar' :
-        '<i class="fa-solid fa-user-plus"></i> Criar Conta';
+        '<i class="fa-solid fa-envelope-circle-check"></i> Enviar Link de Confirmação';
     }
   };
 
@@ -5578,11 +6593,21 @@
   function promptChangePassword() {
     showConfirmDialog({
       title: 'Tem certeza disso?',
-      message: 'Você confirma que deseja solicitar o link de redefinição de senha para seu e-mail cadastrado?',
+      message: `Você confirma que deseja solicitar o link de redefinição de senha para seu e-mail cadastrado (<strong>${escapeHtml(currentUser?.email || '')}</strong>)?`,
       confirmText: 'Confirmar',
       cancelText: 'Cancelar',
-      onConfirm: () => {
-        showToastNotification('Instruções de redefinição de senha enviadas para seu e-mail!');
+      onConfirm: async () => {
+        try {
+          if (currentUser?.email) {
+            await api('/auth/forgot-password', {
+              method: 'POST',
+              body: JSON.stringify({ email: currentUser.email }),
+            });
+          }
+          showToastNotification('Instruções de redefinição de senha enviadas para seu e-mail!');
+        } catch (err) {
+          showToastNotification(err.message || 'Erro ao solicitar redefinição de senha.');
+        }
       },
     });
   }
@@ -7111,7 +8136,7 @@
     const el = document.getElementById(id);
     if (el) {
       el.classList.remove('open');
-      if (id === 'forgot-password-modal' || id === 'reset-password-modal') {
+      if (id === 'forgot-password-modal' || id === 'reset-password-modal' || id === 'confirm-email-modal' || id === 'edit-channel-modal') {
         el.style.display = 'none';
       }
     }
@@ -7121,7 +8146,134 @@
   }
   window.closeModal = closeModal;
 
-  // Password Reset Functions (Bug 4)
+  // Email Confirmation & Password Setup Modal (Triggered ONLY via email link ?verifyEmail=<token>)
+  async function openConfirmEmailModal(tokenVal) {
+    if (!tokenVal) return;
+    closeModal('forgot-password-modal');
+    closeModal('reset-password-modal');
+    showAuthModal(false);
+
+    const modal = document.getElementById('confirm-email-modal');
+    const tokenInput = document.getElementById('confirm-email-token');
+    const subtitleEl = document.getElementById('confirm-email-subtitle');
+    const feedback = document.getElementById('confirm-email-feedback');
+    const pw1 = document.getElementById('confirm-email-password');
+    const pw2 = document.getElementById('confirm-email-password-confirm');
+
+    if (tokenInput) tokenInput.value = tokenVal;
+    if (feedback) feedback.style.display = 'none';
+    if (pw1) pw1.value = '';
+    if (pw2) pw2.value = '';
+
+    try {
+      const check = await api(`/auth/verify-email-token?token=${encodeURIComponent(tokenVal)}`);
+      if (check && check.valid && subtitleEl) {
+        subtitleEl.innerHTML = `Olá <strong>${escapeHtml(check.username || '')}</strong>! Seu e-mail (<strong>${escapeHtml(check.email || '')}</strong>) foi confirmado com sucesso. Agora defina sua senha de acesso abaixo:`;
+      }
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('open');
+      }
+    } catch (err) {
+      alert(err.message || 'O link de confirmação de e-mail é inválido ou já expirou.');
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+      }
+      showAuthModal(true);
+    }
+  }
+  window.openConfirmEmailModal = openConfirmEmailModal;
+
+  async function handleConfirmEmailSubmit(e) {
+    e.preventDefault();
+    const tokenInput = document.getElementById('confirm-email-token');
+    const pw1 = document.getElementById('confirm-email-password');
+    const pw2 = document.getElementById('confirm-email-password-confirm');
+    const submitBtn = document.getElementById('confirm-email-submit-btn');
+    const feedback = document.getElementById('confirm-email-feedback');
+
+    const tokenVal = (tokenInput?.value || '').trim();
+    const val1 = pw1?.value || '';
+    const val2 = pw2?.value || '';
+
+    if (!tokenVal) {
+      alert('Token de confirmação não encontrado.');
+      return;
+    }
+
+    if (val1.length < 6) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+      }
+      return;
+    }
+
+    if (val1 !== val2) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = 'As senhas não coincidem. Digite novamente.';
+      }
+      return;
+    }
+
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Ativando Conta...';
+      }
+      const res = await api('/auth/confirm-email', {
+        method: 'POST',
+        body: JSON.stringify({ token: tokenVal, password: val1 }),
+      });
+
+      closeModal('confirm-email-modal');
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+      }
+
+      if (res && res.token && res.user) {
+        token = res.token;
+        refreshToken = res.refreshToken || '';
+        currentUser = res.user;
+        localStorage.setItem('synccord_token', token);
+        if (refreshToken) {
+          localStorage.setItem('synccord_refresh_token', refreshToken);
+        }
+        localStorage.setItem('synccord_user', JSON.stringify(currentUser));
+        showAuthModal(false);
+        updateUserPanel();
+        initWebSocket();
+        await loadGuilds();
+        showToastNotification('E-mail confirmado e senha aplicada com sucesso!');
+      } else {
+        showAuthModal(true);
+        window.setAuthTab('login');
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(242, 63, 67, 0.15)';
+        feedback.style.border = '1px solid #f23f43';
+        feedback.style.color = '#f23f43';
+        feedback.textContent = err.message || 'Erro ao confirmar e-mail.';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Ativar Conta e Entrar';
+      }
+    }
+  }
+  window.handleConfirmEmailSubmit = handleConfirmEmailSubmit;
+
+  // Password Reset Functions (Strictly gated by the email link ?reset=<token>)
   function openForgotPasswordModal() {
     showAuthModal(false);
     const modal = document.getElementById('forgot-password-modal');
@@ -7161,7 +8313,10 @@
         feedback.style.background = 'rgba(35, 165, 90, 0.15)';
         feedback.style.border = '1px solid #23a55a';
         feedback.style.color = '#23a55a';
-        feedback.innerHTML = `<strong>Sucesso:</strong> ${res.message || 'Instruções enviadas!'}${res.token ? `<br><br><button type="button" class="btn-primary" style="margin-top: 6px; padding: 6px 14px; font-size: 13px;" onclick="openResetPasswordModal('${res.token}')">Abrir Tela de Redefinição Agora</button>` : ''}`;
+        feedback.innerHTML = `
+          <strong>E-mail enviado!</strong> ${escapeHtml(res.message || 'Verifique sua caixa de entrada e clique no link recebido para redefinir sua senha.')}
+          ${res.emailPreviewUrl ? `<br><br><a href="${escapeHtml(res.emailPreviewUrl)}" target="_blank" rel="noopener noreferrer" style="color: #00a8fc; font-weight: 700; text-decoration: underline;">📬 Visualizar E-mail Enviado (Caixa de Entrada SMTP)</a>` : ''}
+        `;
       }
     } catch (err) {
       if (feedback) {
@@ -7180,15 +8335,28 @@
   }
   window.handleForgotPasswordSubmit = handleForgotPasswordSubmit;
 
-  function openResetPasswordModal(tokenVal) {
+  async function openResetPasswordModal(tokenVal) {
+    if (!tokenVal) return;
     closeModal('forgot-password-modal');
     showAuthModal(false);
+
+    try {
+      await api(`/auth/verify-reset-token?token=${encodeURIComponent(tokenVal)}`);
+    } catch (err) {
+      alert(err.message || 'Link de redefinição de senha inválido ou expirado.');
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+      }
+      showAuthModal(true);
+      return;
+    }
+
     const modal = document.getElementById('reset-password-modal');
     if (modal) {
       modal.style.display = 'flex';
       modal.classList.add('open');
       const tokenInput = document.getElementById('reset-password-token');
-      if (tokenInput) tokenInput.value = tokenVal || '';
+      if (tokenInput) tokenInput.value = tokenVal;
       const feedback = document.getElementById('reset-password-feedback');
       if (feedback) feedback.style.display = 'none';
       const pw1 = document.getElementById('reset-new-password');

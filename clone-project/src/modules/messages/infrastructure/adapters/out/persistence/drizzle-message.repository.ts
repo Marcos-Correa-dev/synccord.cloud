@@ -1,4 +1,4 @@
-﻿import { Injectable, Inject } from '@nestjs/common';
+﻿import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { eq, desc, and, lt } from 'drizzle-orm';
 import { Message } from '@modules/messages/domain/entities/message.entity';
 import { MessageRepositoryPort } from '@modules/messages/application/ports/out/message-repository.port';
@@ -88,8 +88,27 @@ export class DrizzleMessageRepository implements MessageRepositoryPort {
       .orderBy(desc(messagesTable.id))
       .limit(limit);
 
-    // Return chronological order (oldest to newest)
     return rows.reverse().map((r) => this.mapToDomainWithAuthor(r));
+  }
+
+  async updateContent(id: string, content: string): Promise<Message> {
+    await this.db
+      .update(messagesTable)
+      .set({
+        content,
+        editedAt: new Date(),
+      })
+      .where(eq(messagesTable.id, id));
+
+    const updated = await this.findById(id);
+    if (!updated) {
+      throw new NotFoundException('Mensagem não encontrada.');
+    }
+    return updated;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(messagesTable).where(eq(messagesTable.id, id));
   }
 
   private mapToDomainWithAuthor(row: MessageRowWithAuthor): Message {

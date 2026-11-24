@@ -21,4 +21,26 @@ export class WebsocketMessageEventPublisher implements MessageEventPublisherPort
       timestamp: message.createdAt.toISOString(),
     });
   }
+
+  async publishMessageUpdated(message: Message): Promise<void> {
+    this.gateway.broadcastToChannel(message.channelId, 'MESSAGE_UPDATE', {
+      id: message.id,
+      channel_id: message.channelId,
+      author_id: message.authorId,
+      author_name: message.authorName,
+      author_avatar: message.authorAvatar,
+      author_discriminator: message.authorDiscriminator,
+      content: message.content,
+      pinned: message.pinned,
+      edited_timestamp: message.editedAt?.toISOString() ?? new Date().toISOString(),
+      timestamp: message.createdAt.toISOString(),
+    });
+  }
+
+  async publishMessageDeleted(channelId: string, messageId: string): Promise<void> {
+    this.gateway.broadcastToChannel(channelId, 'MESSAGE_DELETE', {
+      id: messageId,
+      channel_id: channelId,
+    });
+  }
 }
