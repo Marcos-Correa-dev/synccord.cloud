@@ -1,5 +1,4 @@
 import { Injectable, Inject, ConflictException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../../domain/user.entity';
@@ -12,7 +11,6 @@ export class RegisterService implements RegisterUseCase {
   constructor(
     @Inject(USER_REPOSITORY_PORT)
     private readonly userRepository: UserRepositoryPort,
-    private readonly jwtService: JwtService,
   ) {}
 
   async execute(command: RegisterCommand): Promise<{
@@ -41,6 +39,7 @@ export class RegisterService implements RegisterUseCase {
       ? existing.discriminator
       : Math.floor(1000 + Math.random() * 9000).toString();
 
+    // Toda nova conta nasce com verified = false até que o link enviado ao e-mail seja confirmado
     const newUser = new User(
       id,
       command.username.trim(),
@@ -49,46 +48,26 @@ export class RegisterService implements RegisterUseCase {
       passwordHash,
       existing?.avatar ?? null,
       false,
-      hasPassword,
+      false,
     );
 
     const savedUser = await this.userRepository.save(newUser);
 
-    if (!hasPassword) {
-      const verificationToken = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      await this.userRepository.createEmailVerificationToken(
-        verificationToken,
-        savedUser.id,
-        savedUser.email,
-        expiresAt,
-      );
-
-      return {
-        user: savedUser,
-        verificationRequired: true,
-        verificationToken,
-        message: 'Enviamos um link de confirmação para o seu e-mail. Confirme seu e-mail para definir sua senha.',
-      };
-    }
-
-    const token = this.jwtService.sign(
-      {
-        sub: savedUser.id,
-        email: savedUser.email,
-        username: savedUser.username,
-      },
-      { expiresIn: '15m' },
+    const verificationToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+    await this.userRepository.createEmailVerificationToken(
+      verificationToken,
+      savedUser.id,
+      savedUser.email,
+      expiresAt,
     );
 
-    const refreshToken = this.jwtService.sign(
-      {
-        sub: savedUser.id,
-        type: 'refresh',
-      },
-      { expiresIn: '7d' },
-    );
-
-    return { user: savedUser, token, refreshToken };
+    return {
+      user: savedUser,
+      verificationRequired: true,
+      verificationToken,
+      message:
+        'Enviamos um link de confirmação para o seu e-mail. Confirme seu e-mail para definir sua senha e liberar o login.',
+    };
   }
 }

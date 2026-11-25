@@ -12,38 +12,53 @@ export interface EmailSendResult {
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private smtpTransporter: nodemailer.Transporter | null = null;
+  private lastCredsKey = '';
+
+  private cleanEnv(val?: string): string {
+    const trimmed = (val || '').trim();
+    return trimmed.startsWith('${') && trimmed.endsWith('}') ? '' : trimmed;
+  }
 
   /**
    * Returns a configured SMTP transporter (e.g. Gmail smtp.gmail.com, Outlook, or custom SMTP)
    * when SMTP_USER and SMTP_PASS are defined in .env.
    */
   private getConfiguredSmtpTransporter(): nodemailer.Transporter | null {
-    if (this.smtpTransporter) return this.smtpTransporter;
+    const smtpUser = this.cleanEnv(process.env.SMTP_USER);
+    const rawPass = this.cleanEnv(process.env.SMTP_PASS);
+    const smtpHost = this.cleanEnv(process.env.SMTP_HOST) || 'smtp.gmail.com';
+    const rawPort = this.cleanEnv(process.env.SMTP_PORT);
+    const smtpPort = Number(rawPort || 465);
+    const rawSecure = this.cleanEnv(process.env.SMTP_SECURE);
+    const smtpSecure = rawSecure ? rawSecure === 'true' || smtpPort === 465 : smtpPort === 465;
 
-    const smtpUser = (process.env.SMTP_USER || '').trim();
-    const smtpPass = (process.env.SMTP_PASS || '').trim();
-    const smtpHost = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
-    const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+    // Normalize Google App Passwords (which Google displays as "xxxx xxxx xxxx xxxx" with spaces)
+    const smtpPass = smtpHost.includes('gmail.com') ? rawPass.replace(/\s+/g, '') : rawPass;
 
-    if (smtpUser && smtpPass) {
-      this.smtpTransporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
-      this.logger.log(`SMTP Real configurado com sucesso (${smtpHost}:${smtpPort} / ${smtpUser})`);
+    if (!smtpUser || !smtpPass) {
+      return null;
+    }
+
+    const credsKey = `${smtpHost}:${smtpPort}:${smtpUser}:${smtpPass}`;
+    if (this.smtpTransporter && this.lastCredsKey === credsKey) {
       return this.smtpTransporter;
     }
 
-    return null;
+    this.lastCredsKey = credsKey;
+    this.smtpTransporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+    this.logger.log(`SMTP Real configurado (${smtpHost}:${smtpPort} / ${smtpUser})`);
+    return this.smtpTransporter;
   }
 
   /**
@@ -70,7 +85,7 @@ export class EmailService {
           tls: {
             rejectUnauthorized: false,
           },
-          connectionTimeout: 7000,
+          connectionTimeout: 4500,
         });
 
         await directTransporter.sendMail(mailOptions);
@@ -78,7 +93,7 @@ export class EmailService {
         return true;
       } catch (mxErr: unknown) {
         const msg = mxErr instanceof Error ? mxErr.message : String(mxErr);
-        this.logger.warn(`Tentativa MX direto (${mx.exchange}) falhou: ${msg}`);
+        this.logger.warn(`Tentativa MX direto (${mx.exchange}:25) falhou: ${msg}`);
       }
     }
 
@@ -86,9 +101,11 @@ export class EmailService {
   }
 
   private async dispatchEmail(toEmail: string, subject: string, text: string, html: string): Promise<EmailSendResult> {
+    const smtpUser = this.cleanEnv(process.env.SMTP_USER);
+    const smtpFrom = this.cleanEnv(process.env.SMTP_FROM);
     const fromAddress =
-      process.env.SMTP_FROM ||
-      (process.env.SMTP_USER ? `"SyncCord" <${process.env.SMTP_USER}>` : '"SyncCord" <noreply@synccord.cloud>');
+      smtpFrom ||
+      (smtpUser ? `"SyncCord" <${smtpUser}>` : '"SyncCord" <noreply@synccord.cloud>');
 
     const mailOptions: nodemailer.SendMailOptions = {
       from: fromAddress,
@@ -107,12 +124,15 @@ export class EmailService {
         return { sent: true, deliveryMethod: 'smtp' };
       } catch (smtpErr: unknown) {
         const msg = smtpErr instanceof Error ? smtpErr.message : String(smtpErr);
-        this.logger.error(`Erro no envio via SMTP configurado para ${toEmail}: ${msg}`);
-        return { sent: false, error: msg };
+        this.logger.error(`Erro na autenticação/envio SMTP para ${toEmail}: ${msg}`);
+        return {
+          sent: false,
+          error: `Falha ao autenticar no SMTP (${process.env.SMTP_HOST || 'smtp.gmail.com'}): ${msg}. Verifique se SMTP_PASS no arquivo .env é uma Senha de App de 16 dígitos do Google (https://myaccount.google.com/apppasswords).`,
+        };
       }
     }
 
-    // 2. Secondary: Direct MX delivery to recipient's real email provider (Gmail, Outlook, etc.)
+    // 2. Secondary: Direct MX delivery to recipient's real email provider (works on VPS with port 25 open)
     try {
       const mxDelivered = await this.sendViaDirectMx(mailOptions, toEmail);
       if (mxDelivered) {
@@ -123,12 +143,14 @@ export class EmailService {
       this.logger.warn(`Falha na resolução MX para ${toEmail}: ${msg}`);
     }
 
-    this.logger.warn(
-      `⚠️ Atenção: Para envio garantido via Gmail em redes locais com porta 25 bloqueada, configure SMTP_USER e SMTP_PASS (Senha de App do Google) no arquivo .env.`,
-    );
+    const missingPassMsg =
+      'Não foi possível enviar o e-mail porque SMTP_PASS está vazio em clone-project/.env (e sua rede bloqueia a porta 25 direta). ' +
+      'Para enviar pelo Gmail (smtp.gmail.com), gere uma Senha de App de 16 dígitos em https://myaccount.google.com/apppasswords e preencha SMTP_PASS no arquivo clone-project/.env.';
+    this.logger.error(missingPassMsg);
+
     return {
       sent: false,
-      error: 'Servidor SMTP aguardando credenciais SMTP_USER e SMTP_PASS (Gmail App Password) no .env.',
+      error: missingPassMsg,
     };
   }
 

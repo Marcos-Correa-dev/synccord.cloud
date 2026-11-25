@@ -47,9 +47,22 @@ export class AuthController {
     private readonly jwtService: JwtService,
   ) {}
 
+  private toUserProfile(u: User): UserProfileDto {
+    return {
+      id: u.id,
+      username: u.username,
+      discriminator: u.discriminator,
+      email: u.email,
+      avatar: u.avatar,
+      bot: u.bot,
+      verified: u.verified,
+    };
+  }
+
   private resolveBaseUrl(req?: ExpressRequest): string {
-    if (process.env.FRONTEND_URL) {
-      return process.env.FRONTEND_URL.replace(/\/+$/, '');
+    const configuredUrl = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '').trim();
+    if (configuredUrl) {
+      return configuredUrl.replace(/\/+$/, '');
     }
     if (req) {
       const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
@@ -70,23 +83,21 @@ export class AuthController {
     if (result.verificationRequired && result.verificationToken) {
       const baseUrl = this.resolveBaseUrl(req);
       const verifyLink = `${baseUrl}/?verifyEmail=${encodeURIComponent(result.verificationToken)}`;
-      await this.emailService.sendVerificationEmail(
+      const emailResult = await this.emailService.sendVerificationEmail(
         result.user.email,
         result.user.username,
         verifyLink,
       );
+      if (!emailResult.sent) {
+        throw new BadRequestException(
+          emailResult.error ||
+            'Falha ao enviar o e-mail de confirmação via SMTP. Configure SMTP_USER e SMTP_PASS no arquivo .env.',
+        );
+      }
     }
 
     return {
-      user: {
-        id: result.user.id,
-        username: result.user.username,
-        discriminator: result.user.discriminator,
-        email: result.user.email,
-        avatar: result.user.avatar,
-        bot: result.user.bot,
-        verified: result.user.verified,
-      },
+      user: this.toUserProfile(result.user),
       token: result.token,
       refreshToken: result.refreshToken,
       verificationRequired: result.verificationRequired,
@@ -112,11 +123,7 @@ export class AuthController {
     if (!user) {
       throw new BadRequestException('Usuário não encontrado.');
     }
-    return {
-      valid: true,
-      email: user.email,
-      username: user.username,
-    };
+    return { valid: true, email: user.email, username: user.username };
   }
 
   @Post('confirm-email')
@@ -147,32 +154,16 @@ export class AuthController {
     await this.userRepo.markEmailVerificationTokenUsed(token);
 
     const accessToken = this.jwtService.sign(
-      {
-        sub: user.id,
-        email: user.email,
-        username: user.username,
-      },
+      { sub: user.id, email: user.email, username: user.username },
       { expiresIn: '15m' },
     );
-
     const refreshToken = this.jwtService.sign(
-      {
-        sub: user.id,
-        type: 'refresh',
-      },
+      { sub: user.id, type: 'refresh' },
       { expiresIn: '7d' },
     );
 
     return {
-      user: {
-        id: user.id,
-        username: user.username,
-        discriminator: user.discriminator,
-        email: user.email,
-        avatar: user.avatar,
-        bot: user.bot,
-        verified: true,
-      },
+      user: { ...this.toUserProfile(user), verified: true },
       token: accessToken,
       refreshToken,
       message: 'E-mail confirmado e senha definida com sucesso!',
@@ -187,15 +178,7 @@ export class AuthController {
   async login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     const result = await this.loginUseCase.execute(dto);
     return {
-      user: {
-        id: result.user.id,
-        username: result.user.username,
-        discriminator: result.user.discriminator,
-        email: result.user.email,
-        avatar: result.user.avatar,
-        bot: result.user.bot,
-        verified: result.user.verified,
-      },
+      user: this.toUserProfile(result.user),
       token: result.token,
       refreshToken: result.refreshToken,
     };
@@ -209,15 +192,7 @@ export class AuthController {
   async refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
     const result = await this.refreshTokenUseCase.execute({ refreshToken: dto.refreshToken });
     return {
-      user: {
-        id: result.user.id,
-        username: result.user.username,
-        discriminator: result.user.discriminator,
-        email: result.user.email,
-        avatar: result.user.avatar,
-        bot: result.user.bot,
-        verified: result.user.verified,
-      },
+      user: this.toUserProfile(result.user),
       token: result.token,
       refreshToken: result.refreshToken,
     };
@@ -230,15 +205,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Current user profile', type: UserProfileDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   getProfile(@Request() req: { user: User }): UserProfileDto {
-    return {
-      id: req.user.id,
-      username: req.user.username,
-      discriminator: req.user.discriminator,
-      email: req.user.email,
-      avatar: req.user.avatar,
-      bot: req.user.bot,
-      verified: req.user.verified,
-    };
+    return this.toUserProfile(req.user);
   }
 
   @Patch('me')
@@ -264,15 +231,7 @@ export class AuthController {
       new Date(),
     );
     await this.userRepo.save(updated);
-    return {
-      id: updated.id,
-      username: updated.username,
-      discriminator: updated.discriminator,
-      email: updated.email,
-      avatar: updated.avatar,
-      bot: updated.bot,
-      verified: updated.verified,
-    };
+    return this.toUserProfile(updated);
   }
 
   @Post('forgot-password')
@@ -288,9 +247,7 @@ export class AuthController {
     }
     const user = await this.userRepo.findByEmail(email);
     if (!user) {
-      return {
-        message: 'Se este e-mail estiver cadastrado, enviamos um link de redefinição de senha para sua caixa de entrada.',
-      };
+      throw new BadRequestException('Nenhuma conta encontrada com este endereço de e-mail.');
     }
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -298,7 +255,14 @@ export class AuthController {
 
     const baseUrl = this.resolveBaseUrl(req);
     const resetLink = `${baseUrl}/?reset=${encodeURIComponent(token)}`;
-    await this.emailService.sendPasswordResetEmail(user.email, user.username, resetLink);
+    const emailResult = await this.emailService.sendPasswordResetEmail(user.email, user.username, resetLink);
+
+    if (!emailResult.sent) {
+      throw new BadRequestException(
+        emailResult.error ||
+          'Falha ao enviar o e-mail de redefinição via SMTP. Configure SMTP_USER e SMTP_PASS no arquivo .env.',
+      );
+    }
 
     return {
       message: `Enviamos um e-mail com o link de redefinição de senha diretamente para ${user.email}. Verifique sua caixa de entrada (Gmail, Outlook, etc.) e clique no link recebido para criar sua nova senha.`,
@@ -318,10 +282,7 @@ export class AuthController {
       throw new BadRequestException('O link de redefinição é inválido ou já expirou.');
     }
     const user = await this.userRepo.findById(resetRecord.userId);
-    return {
-      valid: true,
-      email: user?.email,
-    };
+    return { valid: true, email: user?.email };
   }
 
   @Post('reset-password')

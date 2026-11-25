@@ -17,18 +17,18 @@ export class LoginService implements LoginUseCase {
     const emailNormalized = command.email.trim().toLowerCase();
     const user = await this.userRepository.findByEmail(emailNormalized);
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password.');
+      throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
 
-    if (!user.verified && user.passwordHash === 'PENDING_EMAIL_VERIFICATION') {
+    if (!user.verified) {
       throw new UnauthorizedException(
-        'Por favor, confirme seu e-mail pelo link enviado antes de definir sua senha e fazer login.',
+        'Sua conta ainda não foi confirmada. Acesse o link enviado ao seu e-mail para confirmar sua conta e definir sua senha antes de fazer login.',
       );
     }
 
     const isValid = await bcrypt.compare(command.password, user.passwordHash);
     if (!isValid) {
-      throw new UnauthorizedException('Invalid email or password.');
+      throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
 
     const token = this.jwtService.sign(
