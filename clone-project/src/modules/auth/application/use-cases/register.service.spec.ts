@@ -6,7 +6,6 @@ import { User } from '../../domain/user.entity';
 describe('RegisterService Unit Tests', () => {
   let service: RegisterService;
   let mockUserRepo: jest.Mocked<UserRepositoryPort>;
-  let mockJwtService: any;
 
   beforeEach(() => {
     mockUserRepo = {
@@ -23,14 +22,10 @@ describe('RegisterService Unit Tests', () => {
       markEmailVerificationTokenUsed: jest.fn(),
     };
 
-    mockJwtService = {
-      sign: jest.fn().mockReturnValue('mock.jwt.token'),
-    };
-
-    service = new RegisterService(mockUserRepo, mockJwtService);
+    service = new RegisterService(mockUserRepo);
   });
 
-  it('should register a new user with password and generate a JWT', async () => {
+  it('should register a new user as unverified (verified=false) and generate an email verification token', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(null);
 
     const result = await service.execute({
@@ -42,10 +37,11 @@ describe('RegisterService Unit Tests', () => {
     expect(result).toBeDefined();
     expect(result.user.username).toBe('marcos');
     expect(result.user.email).toBe('marcos@example.com');
-    expect(result.token).toBe('mock.jwt.token');
-    expect(result.refreshToken).toBeDefined();
+    expect(result.user.verified).toBe(false);
+    expect(result.verificationRequired).toBe(true);
+    expect(result.verificationToken).toBeDefined();
     expect(mockUserRepo.save).toHaveBeenCalledTimes(1);
-    expect(mockJwtService.sign).toHaveBeenCalledTimes(2);
+    expect(mockUserRepo.createEmailVerificationToken).toHaveBeenCalledTimes(1);
   });
 
   it('should register a new user without password and generate email verification token', async () => {

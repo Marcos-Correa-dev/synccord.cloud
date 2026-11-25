@@ -33,9 +33,24 @@ fi
 
 cd clone-project
 
-# 4. Configurar .env de produção
+# 4. Configurar .env de produção (preservando SMTP_PASS caso já exista na VPS)
 echo "⚙️ Configurando .env de produção..."
-cat << 'EOF' > .env
+EXISTING_SMTP_PASS=""
+if [ -f ".env" ]; then
+    EXISTING_SMTP_PASS=$(grep -E '^SMTP_PASS=' .env | head -n 1 | cut -d '=' -f2- || true)
+    if [[ "$EXISTING_SMTP_PASS" == \$\{* ]]; then
+        EXISTING_SMTP_PASS=""
+    fi
+fi
+
+FINAL_SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
+FINAL_SMTP_PORT="${SMTP_PORT:-465}"
+FINAL_SMTP_SECURE="${SMTP_SECURE:-true}"
+FINAL_SMTP_USER="${SMTP_USER:-correa.marcospaulo@gmail.com}"
+FINAL_SMTP_PASS="${SMTP_PASS:-$EXISTING_SMTP_PASS}"
+FINAL_SMTP_FROM="${SMTP_FROM:-\"SyncCord\" <correa.marcospaulo@gmail.com>}"
+
+cat << EOF > .env
 PORT=3000
 NODE_ENV=production
 API_PREFIX=api/v10
@@ -45,6 +60,12 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET=synccord_prod_secret_key_cloud_2026_secure
 JWT_EXPIRATION=900s
 REFRESH_TOKEN_EXPIRATION=30d
+SMTP_HOST=${FINAL_SMTP_HOST}
+SMTP_PORT=${FINAL_SMTP_PORT}
+SMTP_SECURE=${FINAL_SMTP_SECURE}
+SMTP_USER=${FINAL_SMTP_USER}
+SMTP_PASS=${FINAL_SMTP_PASS}
+SMTP_FROM=${FINAL_SMTP_FROM}
 STORAGE_DRIVER=local
 STORAGE_LOCAL_PATH=./public/uploads
 MAX_FILE_SIZE_MB=25
