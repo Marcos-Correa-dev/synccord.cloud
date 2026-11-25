@@ -325,6 +325,11 @@
               <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
             </svg>
           </button>
+          <button class="dock-btn active" id="dock-btn-voice-isolation" title="Flag Isolamento de Voz (Ativado)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 9v6h2V9H3zm4-3v12h2V6H7zm4-4v20h2V2h-2zm4 4v12h2V6h-2zm4 3v6h2V9h-2z"/>
+            </svg>
+          </button>
           <button class="dock-btn" id="dock-btn-audio-settings" title="Dispositivos de Áudio (Entrada/Saída/Bluetooth)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M19.738 10H22V14H19.739C19.498 14.931 19.1 15.798 18.566 16.564L20.17 18.168L17.342 20.996L15.738 19.392C14.972 19.926 14.105 20.324 13.174 20.565V22H9.174V20.565C8.243 20.324 7.376 19.926 6.61 19.392L5.006 20.996L2.178 18.168L3.782 16.564C3.248 15.798 2.85 14.931 2.609 14H0.348V10H2.609C2.85 9.069 3.248 8.202 3.782 7.436L2.178 5.832L5.006 3.004L6.61 4.608C7.376 4.074 8.243 3.676 9.174 3.435V2H13.174V3.435C14.105 3.676 14.972 4.074 15.738 4.608L17.342 3.004L20.17 5.832L18.566 7.436C19.1 8.202 19.498 9.069 19.739 10H19.738ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z"/>
@@ -921,6 +926,30 @@
           </div>
         </div>
 
+        <!-- Quick Flags: Krisp & Voice Isolation -->
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);">🛡️ Supressão de Ruído Krisp</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Cancela ruídos de fundo, cooler, teclado e cliques</div>
+            </div>
+            <label class="discord-switch">
+              <input type="checkbox" id="modal-toggle-krisp" checked />
+              <span class="discord-slider"></span>
+            </label>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);">🎙️ Isolamento de Voz <span style="font-size: 10px; background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">FLAG</span></div>
+              <div style="font-size: 11px; color: var(--text-muted);">Isola estritamente a frequência da voz humana (Padrão Discord)</div>
+            </div>
+            <label class="discord-switch">
+              <input type="checkbox" id="modal-toggle-voice-isolation" checked />
+              <span class="discord-slider"></span>
+            </label>
+          </div>
+        </div>
+
         <div style="background: rgba(88,101,242,0.1); border: 1px solid rgba(88,101,242,0.25); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--text-normal);">
           💡 <strong>Reconhecimento Automático:</strong> Fones de ouvido e caixas de som Bluetooth são identificados automaticamente assim que conectados ao computador.
         </div>
@@ -1080,7 +1109,7 @@
 
           <div class="settings-footer-info">
             <div style="font-weight: 700;">SyncCord Desktop</div>
-            <div>Stable 1.0.9268 (Host 0.0.9268)</div>
+            <div>Stable 0.1.21 (Rust Native 0.1.21)</div>
             <div>Windows 11 64-bit</div>
           </div>
 

@@ -62,11 +62,16 @@
         this.rawMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
 
-      // 3. Setup Noise Suppressor
+      // 3. Setup Noise Suppressor (Krisp AI + Voice Isolation + Input Gain 0-200%)
       this.suppressor.init(this.audioContext);
-      this.suppressor.setEnabled(currentSettings.noiseSuppression);
-      this.suppressor.setMode(currentSettings.noiseSuppressionMode);
-      this.suppressor.setThreshold(currentSettings.noiseGateThreshold);
+      this.suppressor.setEnabled(currentSettings.noiseSuppression !== false);
+      this.suppressor.setMode(currentSettings.noiseSuppressionMode || 'krisp');
+      this.suppressor.setVoiceIsolation(currentSettings.voiceIsolation !== false);
+      this.suppressor.setThreshold(
+        typeof currentSettings.noiseGateThreshold === 'number' ? currentSettings.noiseGateThreshold : -38,
+      );
+      const inputVolPercent = typeof currentSettings.inputVolume === 'number' ? currentSettings.inputVolume : 100;
+      this.suppressor.setInputGain(inputVolPercent / 100);
 
       // 4. Connect Web Audio Pipeline:
       // Raw Mic Stream -> Source Node -> Noise Suppressor -> Destination Node -> Processed Stream
@@ -137,9 +142,28 @@
         if ('noiseSuppressionMode' in partial) {
           this.suppressor.setMode(updated.noiseSuppressionMode);
         }
+        if ('voiceIsolation' in partial) {
+          this.suppressor.setVoiceIsolation(updated.voiceIsolation);
+        }
         if ('noiseGateThreshold' in partial) {
           this.suppressor.setThreshold(updated.noiseGateThreshold);
         }
+        if ('inputVolume' in partial) {
+          this.suppressor.setInputGain((Number(updated.inputVolume) || 100) / 100);
+        }
+      }
+      if (this.rawMediaStream && ('noiseSuppression' in partial || 'noiseSuppressionMode' in partial || 'voiceIsolation' in partial)) {
+        const isKrisp = updated.noiseSuppression !== false && updated.noiseSuppressionMode !== 'off';
+        const isIso = updated.voiceIsolation !== false;
+        const useHwNs = isKrisp || isIso;
+        this.rawMediaStream.getAudioTracks().forEach((track) => {
+          if (typeof track.applyConstraints === 'function') {
+            track.applyConstraints({
+              noiseSuppression: useHwNs,
+              voiceIsolation: isIso,
+            }).catch(() => {});
+          }
+        });
       }
     }
 
@@ -160,8 +184,9 @@
         // Dispatch volume level callback for VU meter
         this.volumeLevelCallbacks.forEach((cb) => cb(average));
 
-        // Threshold for speaking indicator
-        const speakingNow = average > 24;
+        // Threshold for speaking indicator (respects Krisp / Voice Isolation gate state so background noise never triggers green ring)
+        const gateAllowsSpeech = !this.suppressor || this.suppressor.isGateOpen;
+        const speakingNow = gateAllowsSpeech && average > 18;
         if (speakingNow !== this.isSpeaking) {
           this.isSpeaking = speakingNow;
           this.speakingChangeCallbacks.forEach((cb) => cb(this.isSpeaking));

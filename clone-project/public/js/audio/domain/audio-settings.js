@@ -8,11 +8,12 @@
   const STORAGE_KEY = 'synccord_audio_settings_v1';
 
   const DEFAULT_SETTINGS = {
-    // Noise Suppression (Supressor de Ruído)
+    // Noise Suppression (Supressor de Ruído Krisp & Isolamento de Voz)
     noiseSuppression: true,
     noiseSuppressionMode: 'krisp', // 'krisp' (AI-style spectral gate) | 'dsp' | 'off'
-    noiseGateThreshold: -45, // dB threshold for background noise cutoff (-60dB to -20dB)
-    noiseReductionAmount: 18, // dB attenuation of background noise
+    voiceIsolation: true, // Flag de Isolamento de Voz (Padrão Discord - isola frequências vocais humanas)
+    noiseGateThreshold: -38, // dB threshold for background noise cutoff (-60dB to -15dB)
+    noiseReductionAmount: 28, // dB attenuation of background noise
 
     // Anti-Ducking & High Fidelity (Solves YouTube / Video audio muffled issue)
     antiDucking: true, // Prevents Windows from lowering/muffling YouTube and other applications
@@ -20,8 +21,8 @@
     echoCancellation: false, // Default false to prevent Windows communications mode when using headphones
     autoGainControl: false, // Default false at browser level; managed cleanly by DSP compressor
 
-    // Volumes
-    inputVolume: 100, // 0 - 100%
+    // Volumes (0% - 200% with real Web Audio API GainNode boost)
+    inputVolume: 100, // 0 - 200%
     outputVolume: 100, // 0 - 200%
     attenuation: 0, // Discord Attenuation setting (0% = don't lower other apps)
 

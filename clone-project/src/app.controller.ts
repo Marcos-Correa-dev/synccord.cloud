@@ -21,7 +21,7 @@ export class AppController {
     // Otherwise return API service status and links
     return res.status(HttpStatus.OK).json({
       name: 'SyncCord API & Web Client',
-      version: '10.0.0',
+      version: '0.1.21',
       status: 'online',
       webApp: '/',
       documentation: '/api/docs',
