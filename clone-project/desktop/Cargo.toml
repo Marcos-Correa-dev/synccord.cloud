@@ -1,6 +1,6 @@
 [package]
 name = "synccord-desktop"
-version = "0.1.14"
+version = "0.1.21"
 edition = "2021"
 description = "SyncCord Desktop Native Rust Client - High Performance, Low Memory"
 authors = ["Marcos Correa"]

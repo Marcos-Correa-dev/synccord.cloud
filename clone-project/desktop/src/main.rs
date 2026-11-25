@@ -245,6 +245,8 @@ fn main() {
     let sep1 = PredefinedMenuItem::separator();
     let mute_item = CheckMenuItem::new("Desativar Microfone", true, false, None);
     let deafen_item = CheckMenuItem::new("Desativar Áudio", true, false, None);
+    let krisp_item = CheckMenuItem::new("Supressão de Ruído Krisp", true, true, None);
+    let voice_iso_item = CheckMenuItem::new("Flag: Isolamento de Voz", true, true, None);
     let sep2 = PredefinedMenuItem::separator();
     let reload_item = MenuItem::new("Recarregar Aplicativo (F5)", true, None);
     let sep3 = PredefinedMenuItem::separator();
@@ -255,6 +257,8 @@ fn main() {
         &sep1,
         &mute_item,
         &deafen_item,
+        &krisp_item,
+        &voice_iso_item,
         &sep2,
         &reload_item,
         &sep3,
@@ -273,8 +277,8 @@ fn main() {
     let init_script = r#"
         window.__IS_NATIVE_DESKTOP__ = true;
         window.__DESKTOP_PLATFORM__ = 'rust-wry';
-        window.__DESKTOP_VERSION__ = '0.1.14';
-        console.log('[SyncCord Desktop v0.1.14] Rust native client initialized (Wry / Tao / WebView2).');
+        window.__DESKTOP_VERSION__ = '0.1.21';
+        console.log('[SyncCord Desktop v0.1.21] Rust native client initialized (Wry / Tao / WebView2).');
 
         // Bidirectional IPC Bridge to Rust Native Host
         window.__desktopNotify = function(type, payload) {
@@ -464,6 +468,14 @@ fn main() {
             } else if menu_event.id == deafen_item.id() {
                 let _ = webview.evaluate_script(
                     "if (typeof window.__toggleDeaf === 'function') { window.__toggleDeaf(); }",
+                );
+            } else if menu_event.id == krisp_item.id() {
+                let _ = webview.evaluate_script(
+                    "if (typeof window.__toggleKrisp === 'function') { window.__toggleKrisp(); }",
+                );
+            } else if menu_event.id == voice_iso_item.id() {
+                let _ = webview.evaluate_script(
+                    "if (typeof window.__toggleVoiceIsolation === 'function') { window.__toggleVoiceIsolation(); }",
                 );
             } else if menu_event.id == reload_item.id() {
                 let _ = webview.evaluate_script("window.location.reload();");

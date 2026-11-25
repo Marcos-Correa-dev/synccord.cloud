@@ -19,27 +19,33 @@
     static buildCaptureConstraints(settings, deviceId) {
       const isAntiDuckingActive = settings.antiDucking !== false;
       const isHighFidelity = settings.highFidelity !== false;
+      const isKrispActive = settings.noiseSuppression !== false && settings.noiseSuppressionMode !== 'off';
+      const isVoiceIsolationActive = settings.voiceIsolation !== false;
+      const useHardwareNoiseCancel = isKrispActive || isVoiceIsolationActive;
 
       // Base audio constraints:
-      // When antiDucking is active, we turn OFF browser-level echoCancellation & noiseSuppression.
-      // This prevents Chromium/WebView2 from calling Windows CoreAudio in eCommunications mode.
+      // Windows CoreAudio eCommunications ducking is ONLY triggered by echoCancellation: true.
+      // Enabling native C++ WebRTC RNNoise (noiseSuppression) & voiceIsolation gives hardware-level
+      // noise cancellation before our Web Audio Krisp Spectral Gate + Voice Isolation DSP stage runs!
       const audioConstraints = {
         sampleRate: { ideal: 48000 },
         sampleSize: { ideal: 16 },
-        channelCount: { ideal: 2 }, // Stereo input
+        channelCount: { ideal: isVoiceIsolationActive ? 1 : 2 },
         echoCancellation: isAntiDuckingActive ? (settings.echoCancellation || false) : true,
-        noiseSuppression: false, // Delegated to our DSP noise suppressor
-        autoGainControl: false,  // Delegated to our DSP dynamics compressor
+        noiseSuppression: useHardwareNoiseCancel,
+        voiceIsolation: isVoiceIsolationActive,
+        autoGainControl: Boolean(settings.autoGainControl),
         latency: { ideal: 0.01 },
       };
 
-      // Non-standard Chrome/Edge/WebView2 audio constraints to disable destructive audio processing
+      // Chrome/Edge/WebView2 extended constraints
       if (isAntiDuckingActive || isHighFidelity) {
         audioConstraints.googEchoCancellation = settings.echoCancellation || false;
-        audioConstraints.googAutoGainControl = false;
-        audioConstraints.googNoiseSuppression = false;
-        audioConstraints.googHighpassFilter = false;
-        audioConstraints.googTypingNoiseDetection = false;
+        audioConstraints.googAutoGainControl = Boolean(settings.autoGainControl);
+        audioConstraints.googNoiseSuppression = useHardwareNoiseCancel;
+        audioConstraints.googNoiseSuppression2 = useHardwareNoiseCancel;
+        audioConstraints.googHighpassFilter = useHardwareNoiseCancel;
+        audioConstraints.googTypingNoiseDetection = useHardwareNoiseCancel;
         audioConstraints.suppressLocalAudioPlayback = true;
       }
 

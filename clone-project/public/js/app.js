@@ -352,24 +352,74 @@
     return 100;
   }
 
+  function getMasterOutputVolume() {
+    if (window.SyncCordAudioSettings) {
+      const v = Number(window.SyncCordAudioSettings.get('outputVolume'));
+      if (!isNaN(v) && v >= 0 && v <= 200) return v;
+    }
+    return 100;
+  }
+
+  function applyEffectiveVolumeToUserAudio(userId) {
+    const userVolPercent = getUserVolume(userId);
+    const masterOutPercent = getMasterOutputVolume();
+    // True linear + boosted multiplier: 0% to 200% user volume * 0% to 200% master output volume (up to 4.0x gain)
+    const effectiveGain = isDeafened || userVolPercent === 0 || masterOutPercent === 0
+      ? 0
+      : (userVolPercent / 100) * (masterOutPercent / 100);
+
+    const gainEntry = remoteAudioGains.get(userId);
+    const audioEl = remoteAudioElements.get(userId);
+
+    if (gainEntry && gainEntry.context && gainEntry.gainNode) {
+      if (gainEntry.context.state === 'suspended') {
+        gainEntry.context.resume().catch(() => {});
+      }
+      const now = gainEntry.context.currentTime;
+      gainEntry.gainNode.gain.cancelScheduledValues(now);
+      gainEntry.gainNode.gain.setTargetAtTime(effectiveGain, now, 0.015);
+
+      if (audioEl) {
+        if (gainEntry.context.state === 'running') {
+          // Keep audioEl unmuted at volume 0 so Chromium/WebView2 continues pulling WebRTC packets
+          // while Web Audio API GainNode outputs the amplified 0% - 200% audio!
+          audioEl.muted = false;
+          audioEl.volume = 0;
+        } else {
+          // Fallback while waiting for AudioContext user gesture unlock
+          audioEl.muted = effectiveGain === 0;
+          audioEl.volume = Math.min(1.0, Math.max(0.0, effectiveGain));
+        }
+      }
+      return;
+    }
+
+    if (audioEl) {
+      if (effectiveGain === 0) {
+        audioEl.muted = true;
+      } else {
+        audioEl.muted = isDeafened;
+        audioEl.volume = Math.min(1.0, Math.max(0.0, effectiveGain));
+      }
+    }
+  }
+
+  function applyAllRemoteAudioVolumes() {
+    remoteAudioElements.forEach((_el, uid) => {
+      applyEffectiveVolumeToUserAudio(uid);
+    });
+  }
+
   function setUserVolume(userId, volumePercent) {
     if (!userId) return;
     volumePercent = Math.max(0, Math.min(200, Math.round(volumePercent)));
     userVolumes.set(userId, volumePercent);
     saveUserVolumes();
 
-    // 1. Update direct audio playback element
-    const audioEl = remoteAudioElements.get(userId);
-    if (audioEl) {
-      if (volumePercent === 0) {
-        audioEl.muted = true;
-      } else {
-        audioEl.muted = isDeafened;
-        audioEl.volume = Math.min(1.0, Math.max(0.0, volumePercent / 100));
-      }
-    }
+    // 1. Apply true 0% - 200% Web Audio API GainNode amplification + HTMLAudioElement sync
+    applyEffectiveVolumeToUserAudio(userId);
 
-    // 3. Update volume badge on participant card in central stage and sidebar
+    // 2. Update volume badge on participant card in central stage and sidebar
     updateUserVolumeBadgeOnCard(userId, volumePercent);
   }
 
@@ -3178,9 +3228,23 @@
     }
     const dockBtnKrispEl = document.getElementById('dock-btn-krisp');
     if (dockBtnKrispEl && window.SyncCordAudioSettings) {
-      const isKrisp = window.SyncCordAudioSettings.get('noiseSuppression');
+      const isKrisp = window.SyncCordAudioSettings.get('noiseSuppression') !== false;
       dockBtnKrispEl.classList.toggle('active', !!isKrisp);
-      dockBtnKrispEl.title = isKrisp ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído (Desativada)';
+      dockBtnKrispEl.title = isKrisp ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído Krisp (Desativada)';
+    }
+    const dockBtnVoiceIsoEl = document.getElementById('dock-btn-voice-isolation');
+    if (dockBtnVoiceIsoEl && window.SyncCordAudioSettings) {
+      const isIso = window.SyncCordAudioSettings.get('voiceIsolation') !== false;
+      dockBtnVoiceIsoEl.classList.toggle('active', !!isIso);
+      dockBtnVoiceIsoEl.title = isIso ? 'Flag Isolamento de Voz (Ativado)' : 'Flag Isolamento de Voz (Desativado)';
+    }
+    const modalToggleKrisp = document.getElementById('modal-toggle-krisp');
+    if (modalToggleKrisp && window.SyncCordAudioSettings) {
+      modalToggleKrisp.checked = window.SyncCordAudioSettings.get('noiseSuppression') !== false;
+    }
+    const modalToggleIso = document.getElementById('modal-toggle-voice-isolation');
+    if (modalToggleIso && window.SyncCordAudioSettings) {
+      modalToggleIso.checked = window.SyncCordAudioSettings.get('voiceIsolation') !== false;
     }
   }
 
@@ -3361,6 +3425,9 @@
 
   async function switchAudioOutput(deviceId) {
     selectedAudioOutputId = deviceId;
+    if (window.SyncCordAudioSettings) {
+      window.SyncCordAudioSettings.set('selectedOutputId', deviceId);
+    }
     const mediaElements = document.querySelectorAll('video, audio');
     for (const el of mediaElements) {
       if (el && typeof el.setSinkId === 'function') {
@@ -3371,6 +3438,11 @@
         }
       }
     }
+    remoteAudioGains.forEach((gainEntry) => {
+      if (gainEntry && gainEntry.context && typeof gainEntry.context.setSinkId === 'function') {
+        gainEntry.context.setSinkId(deviceId).catch(() => {});
+      }
+    });
   }
 
   function testSpeakerSound() {
@@ -4017,7 +4089,7 @@
     }
   }
 
-  // Play remote audio through dedicated HTMLAudioElement with native WebRTC hardware-accelerated playback
+  // Play remote audio through dedicated HTMLAudioElement + Web Audio API GainNode (supports true 0% - 200% boost!)
   function playRemoteAudio(userId, stream) {
     let audioEl = remoteAudioElements.get(userId);
     if (!audioEl) {
@@ -4030,14 +4102,61 @@
       remoteAudioElements.set(userId, audioEl);
     }
 
-    // Direct WebRTC MediaStream assignment ensures 100% reliable hardware-accelerated audio playback
     if (audioEl.srcObject !== stream) {
       audioEl.srcObject = stream;
     }
 
-    const currentVol = getUserVolume(userId);
-    audioEl.muted = isDeafened || (currentVol === 0);
-    audioEl.volume = Math.min(1.0, Math.max(0.0, currentVol / 100));
+    // Setup or update Web Audio API GainNode pipeline for true >100% up to 200% amplification
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx && stream && stream.getAudioTracks().length > 0) {
+        let gainEntry = remoteAudioGains.get(userId);
+        if (gainEntry && gainEntry.stream !== stream) {
+          try {
+            gainEntry.sourceNode.disconnect();
+            gainEntry.gainNode.disconnect();
+            if (gainEntry.limiterNode) gainEntry.limiterNode.disconnect();
+            gainEntry.context.close().catch(() => {});
+          } catch (_e) {}
+          remoteAudioGains.delete(userId);
+          gainEntry = null;
+        }
+
+        if (!gainEntry) {
+          const ctx = new AudioCtx({ latencyHint: 'interactive', sampleRate: 48000 });
+          if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof ctx.setSinkId === 'function') {
+            ctx.setSinkId(selectedAudioOutputId).catch(() => {});
+          }
+          const sourceNode = ctx.createMediaStreamSource(stream);
+          const gainNode = ctx.createGain();
+          // Soft peak limiter at -1.0dB prevents harsh clipping when boosted to 200%
+          const limiterNode = ctx.createDynamicsCompressor();
+          limiterNode.threshold.setValueAtTime(-1.5, ctx.currentTime);
+          limiterNode.knee.setValueAtTime(6.0, ctx.currentTime);
+          limiterNode.ratio.setValueAtTime(12.0, ctx.currentTime);
+          limiterNode.attack.setValueAtTime(0.002, ctx.currentTime);
+          limiterNode.release.setValueAtTime(0.08, ctx.currentTime);
+
+          sourceNode.connect(gainNode);
+          gainNode.connect(limiterNode);
+          limiterNode.connect(ctx.destination);
+
+          gainEntry = { context: ctx, sourceNode, gainNode, limiterNode, stream };
+          remoteAudioGains.set(userId, gainEntry);
+
+          ctx.onstatechange = () => {
+            applyEffectiveVolumeToUserAudio(userId);
+          };
+          if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[WebAudio Gain] Fallback to standard audio element for ${userId}:`, err);
+    }
+
+    applyEffectiveVolumeToUserAudio(userId);
 
     if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof audioEl.setSinkId === 'function') {
       audioEl.setSinkId(selectedAudioOutputId).catch(() => {});
@@ -4309,6 +4428,17 @@
       remoteAudioElements.delete(userId);
     }
 
+    const gainEntry = remoteAudioGains.get(userId);
+    if (gainEntry) {
+      try {
+        gainEntry.sourceNode.disconnect();
+        gainEntry.gainNode.disconnect();
+        if (gainEntry.limiterNode) gainEntry.limiterNode.disconnect();
+        gainEntry.context.close().catch(() => {});
+      } catch (e) {}
+      remoteAudioGains.delete(userId);
+    }
+
     iceCandidateQueues.delete(userId);
     isMakingOffer.delete(userId);
   }
@@ -4331,6 +4461,16 @@
     });
     remoteAudioElements.clear();
 
+    remoteAudioGains.forEach((gainEntry) => {
+      try {
+        gainEntry.sourceNode.disconnect();
+        gainEntry.gainNode.disconnect();
+        if (gainEntry.limiterNode) gainEntry.limiterNode.disconnect();
+        gainEntry.context.close().catch(() => {});
+      } catch (e) {}
+    });
+    remoteAudioGains.clear();
+
     iceCandidateQueues.clear();
     isMakingOffer.clear();
   }
@@ -4340,6 +4480,11 @@
     remoteAudioElements.forEach((audioEl) => {
       if (audioEl && audioEl.paused && audioEl.srcObject) {
         audioEl.play().catch(() => {});
+      }
+    });
+    remoteAudioGains.forEach((gainEntry, uid) => {
+      if (gainEntry && gainEntry.context && gainEntry.context.state === 'suspended') {
+        gainEntry.context.resume().then(() => applyEffectiveVolumeToUserAudio(uid)).catch(() => {});
       }
     });
     if (audioContext && audioContext.state === 'suspended') {
@@ -4685,6 +4830,70 @@
     }
     document.removeEventListener('click', closeMemberContextMenu);
   }
+
+  function openChannelSidebarEmptyContextMenu(e) {
+    if (!currentGuild) return;
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+    closeChannelContextMenu();
+    closeMessageContextMenu();
+    closeMemberContextMenu();
+    if (typeof closeVoiceUserContextMenu === 'function') closeVoiceUserContextMenu();
+    if (typeof closeInputContextMenu === 'function') closeInputContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'voice-user-context-menu';
+    menu.style.minWidth = '235px';
+    menu.style.left = `${Math.min(e.clientX || 120, window.innerWidth - 245)}px`;
+    menu.style.top = `${Math.min(e.clientY || 120, window.innerHeight - 190)}px`;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" id="sidebar-empty-ctx-create-voice">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${SVGS.VOICE}
+          <span>Criar Lounge de Voz</span>
+        </div>
+      </div>
+      <div class="context-menu-item" id="sidebar-empty-ctx-create-text">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${SVGS.HASH}
+          <span>Criar Canal de Texto</span>
+        </div>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" id="sidebar-empty-ctx-invite">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${SVGS.INVITE}
+          <span>Convidar para o Servidor</span>
+        </div>
+      </div>
+    `;
+
+    menu.querySelector('#sidebar-empty-ctx-create-voice').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      openCreateChannelModal(2);
+    });
+
+    menu.querySelector('#sidebar-empty-ctx-create-text').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      openCreateChannelModal(0);
+    });
+
+    menu.querySelector('#sidebar-empty-ctx-invite').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeChannelContextMenu();
+      openInviteModal();
+    });
+
+    document.body.appendChild(menu);
+    activeChannelContextMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('click', closeChannelContextMenu);
+    }, 10);
+  }
+  window.openChannelSidebarEmptyContextMenu = openChannelSidebarEmptyContextMenu;
 
   function openChannelContextMenu(e, channel) {
     if (e && e.preventDefault) e.preventDefault();
@@ -5457,10 +5666,8 @@
     isDeafened = !isDeafened;
     if (isDeafened) isMuted = true;
     updateAudioButtons();
-    // Update all remote audio playback elements immediately
-    remoteAudioElements.forEach((audioEl, uId) => {
-      audioEl.muted = isDeafened || (getUserVolume(uId) === 0);
-    });
+    // Update all remote audio playback elements & WebAudio GainNodes immediately
+    applyAllRemoteAudioVolumes();
     if (connectedVoiceChannel && socket && currentUser) {
       socket.emit('voice:join', {
         guildId: currentGuild.id,
@@ -5492,6 +5699,14 @@
   // Expose audio toggles for native desktop client tray actions
   window.__toggleMic = toggleMic;
   window.__toggleDeaf = toggleDeaf;
+  window.__toggleKrisp = function () {
+    const btn = document.getElementById('dock-btn-krisp');
+    if (btn) btn.click();
+  };
+  window.__toggleVoiceIsolation = function () {
+    const btn = document.getElementById('dock-btn-voice-isolation');
+    if (btn) btn.click();
+  };
 
   // Channel Creation Modal Logic
   function openCreateChannelModal(defaultType) {
@@ -5674,14 +5889,68 @@
     if (dockBtnKrispEl) {
       dockBtnKrispEl.addEventListener('click', () => {
         if (!window.SyncCordAudioSettings) return;
-        const current = window.SyncCordAudioSettings.get('noiseSuppression');
+        const current = window.SyncCordAudioSettings.get('noiseSuppression') !== false;
         const next = !current;
         window.SyncCordAudioSettings.set('noiseSuppression', next);
         if (window.SyncCordAudioPipeline) {
           window.SyncCordAudioPipeline.updateSettings({ noiseSuppression: next });
         }
-        dockBtnKrispEl.classList.toggle('active', next);
-        dockBtnKrispEl.title = next ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído (Desativada)';
+        updateDockButtonsState();
+        showToastNotification(next ? '🛡️ Supressão de Ruído Krisp ativada!' : 'Supressão de Ruído Krisp desativada.');
+      });
+    }
+
+    const dockBtnVoiceIsoEl = document.getElementById('dock-btn-voice-isolation');
+    if (dockBtnVoiceIsoEl) {
+      dockBtnVoiceIsoEl.addEventListener('click', () => {
+        if (!window.SyncCordAudioSettings) return;
+        const current = window.SyncCordAudioSettings.get('voiceIsolation') !== false;
+        const next = !current;
+        window.SyncCordAudioSettings.set('voiceIsolation', next);
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ voiceIsolation: next });
+        }
+        updateDockButtonsState();
+        showToastNotification(next ? '🎙️ Flag Isolamento de Voz ativada!' : 'Flag Isolamento de Voz desativada.');
+      });
+    }
+
+    const modalToggleKrisp = document.getElementById('modal-toggle-krisp');
+    if (modalToggleKrisp) {
+      modalToggleKrisp.addEventListener('change', (e) => {
+        const next = e.target.checked;
+        if (window.SyncCordAudioSettings) window.SyncCordAudioSettings.set('noiseSuppression', next);
+        if (window.SyncCordAudioPipeline) window.SyncCordAudioPipeline.updateSettings({ noiseSuppression: next });
+        updateDockButtonsState();
+      });
+    }
+
+    const modalToggleIso = document.getElementById('modal-toggle-voice-isolation');
+    if (modalToggleIso) {
+      modalToggleIso.addEventListener('change', (e) => {
+        const next = e.target.checked;
+        if (window.SyncCordAudioSettings) window.SyncCordAudioSettings.set('voiceIsolation', next);
+        if (window.SyncCordAudioPipeline) window.SyncCordAudioPipeline.updateSettings({ voiceIsolation: next });
+        updateDockButtonsState();
+      });
+    }
+
+    // Right-click on empty area of channel sidebar (below voice lounges / categories) to create Voice Lounge or Text Channel like Discord.exe
+    const channelSidebarEl = document.querySelector('.channel-sidebar');
+    if (channelSidebarEl) {
+      channelSidebarEl.addEventListener('contextmenu', (e) => {
+        if (!currentGuild) return;
+        // Ignore if right-clicking on a specific channel item, connected voice user, user panel, or voice connected bar
+        if (
+          e.target.closest('.channel-item') ||
+          e.target.closest('.voice-user-item') ||
+          e.target.closest('.user-panel') ||
+          e.target.closest('.voice-connected-bar') ||
+          e.target.closest('.server-header')
+        ) {
+          return;
+        }
+        openChannelSidebarEmptyContextMenu(e);
       });
     }
 
@@ -7748,11 +8017,14 @@
       case 'voice-video': {
         const audioSettings = window.SyncCordAudioSettings ? window.SyncCordAudioSettings.getAll() : {};
         const isKrisp = audioSettings.noiseSuppression !== false;
+        const isVoiceIsolation = audioSettings.voiceIsolation !== false;
         const isAntiDucking = audioSettings.antiDucking !== false;
         const isEchoCancel = !!audioSettings.echoCancellation;
         const isAgc = !!audioSettings.autoGainControl;
         const currentMode = audioSettings.noiseSuppressionMode || 'krisp';
-        const currentThreshold = typeof audioSettings.noiseGateThreshold === 'number' ? audioSettings.noiseGateThreshold : -45;
+        const currentThreshold = typeof audioSettings.noiseGateThreshold === 'number' ? audioSettings.noiseGateThreshold : -38;
+        const currentInputVol = typeof audioSettings.inputVolume === 'number' ? audioSettings.inputVolume : 100;
+        const currentOutputVol = typeof audioSettings.outputVolume === 'number' ? audioSettings.outputVolume : 100;
 
         return `
           <div class="settings-pane-title">${t('settings.voiceVideo')}</div>
@@ -7765,8 +8037,11 @@
               <label class="form-label">DISPOSITIVO DE ENTRADA (MICROFONE)</label>
               <select class="form-input" id="settings-audio-input-select"></select>
               <div style="margin-top: 8px;">
-                <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE ENTRADA</label>
-                <input type="range" min="0" max="100" value="100" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE ENTRADA (GANHO DO MICROFONE 0% - 200%)</label>
+                  <span id="settings-input-volume-val" style="font-size: 12px; font-weight: 700; color: ${currentInputVol > 100 ? 'var(--green)' : 'var(--accent)'};">${currentInputVol}%</span>
+                </div>
+                <input type="range" id="settings-input-volume" min="0" max="200" step="1" value="${currentInputVol}" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
               </div>
             </div>
 
@@ -7774,14 +8049,17 @@
               <label class="form-label">DISPOSITIVO DE SAÍDA (FONES / ALTO-FALANTES / BLUETOOTH)</label>
               <select class="form-input" id="settings-audio-output-select"></select>
               <div style="margin-top: 8px;">
-                <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE SAÍDA</label>
-                <input type="range" min="0" max="100" value="100" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE SAÍDA (AMPLIFICAÇÃO 0% - 200%)</label>
+                  <span id="settings-output-volume-val" style="font-size: 12px; font-weight: 700; color: ${currentOutputVol > 100 ? 'var(--green)' : 'var(--accent)'};">${currentOutputVol}%</span>
+                </div>
+                <input type="range" id="settings-output-volume" min="0" max="200" step="1" value="${currentOutputVol}" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
               </div>
             </div>
 
             <div class="device-test-container" style="margin-top: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 12px; font-weight: 700; color: var(--text-header);">TESTE DE MICROFONE</span>
+                <span style="font-size: 12px; font-weight: 700; color: var(--text-header);">TESTE DE MICROFONE (COM KRISP & ISOLAMENTO DE VOZ)</span>
                 <button type="button" class="btn-secondary" id="settings-btn-test-mic" style="font-size: 12px; padding: 4px 10px;">
                   Testar Mic
                 </button>
@@ -7817,8 +8095,22 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
+                <div class="discord-toggle-title" style="display: flex; align-items: center; gap: 8px;">
+                  <span>🎙️ Isolamento de Voz (Voice Isolation)</span>
+                  <span class="settings-badge-nitro" style="background: var(--accent); font-size: 10px; padding: 2px 6px;">FLAG DISCORD</span>
+                </div>
+                <div class="discord-toggle-desc">Isola estritamente a banda de frequências vocais humanas (135Hz – 3900Hz) e corta completamente sons periféricos, respiração, teclado mecânico, cliques de mouse e ruído de ambiente.</div>
+              </div>
+              <label class="discord-switch">
+                <input type="checkbox" id="settings-toggle-voice-isolation" ${isVoiceIsolation ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
+            </div>
+
+            <div class="discord-toggle-row">
+              <div class="discord-toggle-info">
                 <div class="discord-toggle-title">🛡️ Supressão de Ruído Krisp (AI & DSP)</div>
-                <div class="discord-toggle-desc">Filtro espectral e inteligente que elimina ruídos de fundo como ventiladores, teclado, cliques e eco de ambiente.</div>
+                <div class="discord-toggle-desc">Filtro espectral adaptativo que analisa formantes vocais em tempo real e cancela ruídos contínuos como ventiladores, ar-condicionado e chiado de microfone.</div>
                 <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
                   <span style="font-size: 12px; color: var(--text-muted);">Algoritmo:</span>
                   <select class="form-input" id="settings-krisp-mode" style="width: auto; padding: 4px 8px; font-size: 12px;">
@@ -7836,11 +8128,11 @@
 
             <div style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; font-weight: 600; color: var(--text-header);">Sensibilidade do Noise Gate</span>
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-header);">Sensibilidade do Noise Gate Krisp</span>
                 <span id="settings-krisp-threshold-val" style="font-size: 12px; color: var(--accent); font-weight: 700;">${currentThreshold} dB</span>
               </div>
-              <input type="range" id="settings-krisp-threshold" min="-60" max="-20" step="1" value="${currentThreshold}" style="width: 100%; accent-color: var(--accent); margin-top: 6px;" />
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Corta ruídos quando você não está falando. Valores baixos (-55dB) deixam passar sussurros; valores altos (-35dB) bloqueiam ruídos fortes.</div>
+              <input type="range" id="settings-krisp-threshold" min="-60" max="-15" step="1" value="${currentThreshold}" style="width: 100%; accent-color: var(--accent); margin-top: 6px;" />
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Corta ruídos quando você não está falando. Valores mais altos (-32dB a -25dB) bloqueiam ruídos muito fortes ao redor.</div>
             </div>
 
             <div class="discord-toggle-row">
@@ -8246,11 +8538,58 @@
 
     refreshAudioDevices();
 
-    // Noise Suppression (Krisp / DSP) controls
+    // 0% - 200% Input Volume & Output Volume Controls
+    const inputVolumeSlider = document.getElementById('settings-input-volume');
+    const inputVolumeVal = document.getElementById('settings-input-volume-val');
+    if (inputVolumeSlider) {
+      inputVolumeSlider.oninput = (e) => {
+        const val = Math.max(0, Math.min(200, parseInt(e.target.value, 10) || 0));
+        if (inputVolumeVal) {
+          inputVolumeVal.textContent = `${val}%`;
+          inputVolumeVal.style.color = val > 100 ? 'var(--green)' : 'var(--accent)';
+        }
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ inputVolume: val });
+        } else if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('inputVolume', val);
+        }
+      };
+    }
+
+    const outputVolumeSlider = document.getElementById('settings-output-volume');
+    const outputVolumeVal = document.getElementById('settings-output-volume-val');
+    if (outputVolumeSlider) {
+      outputVolumeSlider.oninput = (e) => {
+        const val = Math.max(0, Math.min(200, parseInt(e.target.value, 10) || 0));
+        if (outputVolumeVal) {
+          outputVolumeVal.textContent = `${val}%`;
+          outputVolumeVal.style.color = val > 100 ? 'var(--green)' : 'var(--accent)';
+        }
+        if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('outputVolume', val);
+        }
+        applyAllRemoteAudioVolumes();
+      };
+    }
+
+    // Voice Isolation Flag & Noise Suppression (Krisp / DSP) controls
+    const voiceIsoToggle = document.getElementById('settings-toggle-voice-isolation');
     const krispToggle = document.getElementById('settings-toggle-krisp');
     const krispModeSelect = document.getElementById('settings-krisp-mode');
     const krispThresholdInput = document.getElementById('settings-krisp-threshold');
     const krispThresholdVal = document.getElementById('settings-krisp-threshold-val');
+
+    if (voiceIsoToggle) {
+      voiceIsoToggle.onchange = (e) => {
+        const val = e.target.checked;
+        if (window.SyncCordAudioPipeline) {
+          window.SyncCordAudioPipeline.updateSettings({ voiceIsolation: val });
+        } else if (window.SyncCordAudioSettings) {
+          window.SyncCordAudioSettings.set('voiceIsolation', val);
+        }
+        updateDockButtonsState();
+      };
+    }
 
     if (krispToggle) {
       krispToggle.onchange = (e) => {
@@ -8337,21 +8676,30 @@
     if (testMicBtn) {
       testMicBtn.onclick = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              sampleRate: { ideal: 48000 },
-              channelCount: { ideal: 2 },
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-              deviceId: selectedAudioInputId !== 'default' ? { ideal: selectedAudioInputId } : undefined,
-            },
-          });
+          const curSettings = window.SyncCordAudioSettings ? window.SyncCordAudioSettings.getAll() : {};
+          const constraints = window.WebRtcAudioAdapter
+            ? window.WebRtcAudioAdapter.buildCaptureConstraints(curSettings, selectedAudioInputId)
+            : { audio: true };
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
           const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
           const src = ctx.createMediaStreamSource(stream);
+
+          // Route microphone test through the real Krisp + Voice Isolation DSP Suppressor
+          const testSuppressor = new window.DspNoiseSuppressorAdapter();
+          testSuppressor.init(ctx);
+          testSuppressor.setEnabled(curSettings.noiseSuppression !== false);
+          testSuppressor.setMode(curSettings.noiseSuppressionMode || 'krisp');
+          testSuppressor.setVoiceIsolation(curSettings.voiceIsolation !== false);
+          testSuppressor.setThreshold(typeof curSettings.noiseGateThreshold === 'number' ? curSettings.noiseGateThreshold : -38);
+          testSuppressor.setInputGain((typeof curSettings.inputVolume === 'number' ? curSettings.inputVolume : 100) / 100);
+          const processedOut = testSuppressor.process(src);
+
           const an = ctx.createAnalyser();
-          an.fftSize = 64;
-          src.connect(an);
+          an.fftSize = 128;
+          processedOut.connect(an);
+          // Connect to speakers so user can hear their isolated, noise-cancelled voice live
+          processedOut.connect(ctx.destination);
+
           const data = new Uint8Array(an.frequencyBinCount);
           let running = true;
           testMicBtn.textContent = 'Parar Teste';
@@ -8359,14 +8707,16 @@
             if (!running) return;
             an.getByteFrequencyData(data);
             const avg = data.reduce((a, b) => a + b, 0) / data.length;
-            if (meterFill) meterFill.style.width = Math.min(100, (avg / 128) * 100) + '%';
+            const gateOpen = testSuppressor.isGateOpen;
+            if (meterFill) meterFill.style.width = (gateOpen ? Math.min(100, (avg / 96) * 100) : 0) + '%';
             window.requestAnimationFrame(update);
           };
           update();
           testMicBtn.onclick = () => {
             running = false;
+            testSuppressor.destroy();
             stream.getTracks().forEach((t) => t.stop());
-            ctx.close();
+            ctx.close().catch(() => {});
             testMicBtn.textContent = 'Testar Mic';
             if (meterFill) meterFill.style.width = '0%';
             bindSettingsVoiceVideo();

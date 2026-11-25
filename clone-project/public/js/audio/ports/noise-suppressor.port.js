@@ -49,6 +49,22 @@
     }
 
     /**
+     * Toggles Discord-style Voice Isolation flag
+     * @param {boolean} _enabled
+     */
+    setVoiceIsolation(_enabled) {
+      throw new Error('Not implemented');
+    }
+
+    /**
+     * Adjusts input microphone gain multiplier (0.0 to 2.0 for 0% - 200%)
+     * @param {number} _gainMultiplier
+     */
+    setInputGain(_gainMultiplier) {
+      throw new Error('Not implemented');
+    }
+
+    /**
      * Destroys and cleans up audio nodes
      */
     destroy() {
