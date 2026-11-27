@@ -95,3 +95,27 @@ export const dmParticipantsTable = pgTable('dm_participants', {
   userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const userConnectionsTable = pgTable('user_connections', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
+  provider: varchar('provider', { length: 32 }).notNull(),
+  providerAccountId: varchar('provider_account_id', { length: 128 }).notNull(),
+  providerUsername: varchar('provider_username', { length: 128 }).notNull(),
+  profileUrl: text('profile_url'),
+  avatarUrl: text('avatar_url'),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  showOnProfile: boolean('show_on_profile').notNull().default(true),
+  metadata: text('metadata'),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userAuthorizedAppsTable = pgTable('user_authorized_apps', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  userId: varchar('user_id', { length: 32 }).references(() => usersTable.id).notNull(),
+  appName: varchar('app_name', { length: 128 }).notNull(),
+  appIcon: text('app_icon'),
+  scopes: text('scopes').notNull().default('identify'),
+  authorizedAt: timestamp('authorized_at', { withTimezone: true }).notNull().defaultNow(),
+});

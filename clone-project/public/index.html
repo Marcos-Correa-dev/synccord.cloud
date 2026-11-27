@@ -27,7 +27,7 @@
     <!-- 2. CHANNEL SIDEBAR -->
     <div class="channel-sidebar">
       <div class="server-header" id="server-header">
-        <span id="server-name">Carregando...</span>
+        <span id="server-name" data-i18n="common.loading">Carregando...</span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <path fill-rule="evenodd" clip-rule="evenodd" d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
         </svg>
@@ -47,7 +47,7 @@
                   <path d="M12 3a9 9 0 0 0-9 9v1a1 1 0 0 0 2 0v-1a7 7 0 1 1 14 0v1a1 1 0 0 0 2 0v-1a9 9 0 0 0-9-9zm-4 9a4 4 0 1 1 8 0v1a1 1 0 0 1-2 0v-1a2 2 0 1 0-4 0v1a1 1 0 0 1-2 0v-1zm4 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
                 </svg>
               </span>
-              <span class="voice-status-text">Voz Conectada</span>
+              <span class="voice-status-text" data-i18n="chat.voiceConnected">Voz Conectada</span>
             </div>
             <div class="voice-channel-info">
               <span class="voice-channel-title" id="connected-channel-name">Lounge de Voz</span>
@@ -55,7 +55,7 @@
             </div>
           </div>
           <div class="voice-actions">
-            <button class="voice-disconnect-btn" id="voice-disconnect-btn" title="Desconectar da Voz">
+            <button class="voice-disconnect-btn" id="voice-disconnect-btn" data-i18n-title="voice.disconnectTitle" title="Desconectar da Voz">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
               </svg>
@@ -65,17 +65,17 @@
 
         <!-- Voice Media Controls: Video (Webcam) & Screen Share -->
         <div class="voice-media-controls">
-          <button class="voice-media-btn" id="btn-toggle-camera" title="Ativar Câmera">
+          <button class="voice-media-btn" id="btn-toggle-camera" data-i18n-title="voice.enableCamera" title="Ativar Câmera">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
             </svg>
-            <span>Vídeo</span>
+            <span data-i18n="voice.videoBtn">Vídeo</span>
           </button>
-          <button class="voice-media-btn" id="btn-toggle-screenshare" title="Compartilhar sua tela">
+          <button class="voice-media-btn" id="btn-toggle-screenshare" data-i18n-title="voice.shareScreenTitle" title="Compartilhar sua tela">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M20 3H4c-1.11 0-2 .89-2 2v11c0 1.11.89 2 2 2h4l-2 3v1h12v-1l-2-3h4c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 13H4V5h16v11zm-7-2l4-4h-3V7h-2v3H9l4 4z"/>
             </svg>
-            <span>Tela</span>
+            <span data-i18n="voice.screenBtn">Tela</span>
           </button>
         </div>
       </div>
@@ -91,7 +91,7 @@
           
           <!-- Banner -->
           <div class="popover-banner" id="popover-banner">
-            <div class="popover-banner-edit-btn" onclick="openUserSettingsTab('profiles')" title="Editar Perfil">
+            <div class="popover-banner-edit-btn" onclick="openUserSettingsTab('profiles')" data-i18n-title="profile.editProfile" title="Editar Perfil">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
               </svg>
@@ -100,7 +100,7 @@
 
           <!-- Avatar & Body Info -->
           <div class="popover-body">
-            <div class="popover-avatar-wrapper" onclick="openUserSettingsTab('profiles')" title="Mudar Avatar">
+            <div class="popover-avatar-wrapper" onclick="openUserSettingsTab('profiles')" data-i18n-title="profile.changeAvatar" title="Mudar Avatar">
               <div class="avatar" id="popover-avatar">?</div>
               <div class="status-dot online" id="popover-status-dot"></div>
             </div>
@@ -115,23 +115,29 @@
             </div>
 
             <!-- Custom Status / Bio Pill -->
-            <div class="popover-custom-status" id="popover-custom-status" onclick="openUserSettingsTab('profiles')" title="Editar Recado ou Bio">
+            <div class="popover-custom-status" id="popover-custom-status" onclick="openUserSettingsTab('profiles')" data-i18n-title="profile.editBioTitle" title="Editar Recado ou Bio">
               <span style="font-size: 14px;">💬</span>
               <span class="popover-status-text" id="popover-status-text">Definir um recado no perfil...</span>
+            </div>
+
+            <!-- Visible Connected Accounts on Mini Profile -->
+            <div id="popover-connections-container" style="display: none; margin-top: 8px;">
+              <div class="popover-section-label" data-i18n="connections.profileSectionTitle">CONEXÕES VERIFICADAS</div>
+              <div class="popover-connections-list" id="popover-connections-list"></div>
             </div>
 
             <div class="popover-divider"></div>
 
             <!-- STATUS SELECTION OPTIONS -->
-            <div class="popover-section-label">DEFINIR STATUS ONLINE</div>
+            <div class="popover-section-label" data-i18n="status.title">DEFINIR STATUS ONLINE</div>
             <div class="status-menu-list">
               <!-- 1. DISPONÍVEL (Verde) -->
               <div class="status-menu-item" onclick="setUserStatus('online')">
                 <div class="status-menu-left">
                   <span class="status-circle online"></span>
                   <div class="status-menu-texts">
-                    <span class="status-title">Disponível</span>
-                    <span class="status-desc">Aparece online e pronto para conversar</span>
+                    <span class="status-title" data-i18n="status.online">Disponível</span>
+                    <span class="status-desc" data-i18n="status.onlineDesc">Aparece online e pronto para conversar</span>
                   </div>
                 </div>
               </div>
@@ -141,21 +147,21 @@
                 <div class="status-menu-left">
                   <span class="status-circle dnd"></span>
                   <div class="status-menu-texts">
-                    <span class="status-title">Não Perturbar</span>
-                    <span class="status-desc">Não receberá notificações sonoras</span>
+                    <span class="status-title" data-i18n="status.dnd">Não Perturbar</span>
+                    <span class="status-desc" data-i18n="status.dndDesc">Não receberá notificações sonoras</span>
                   </div>
                 </div>
                 <span class="submenu-arrow">▶</span>
 
                 <!-- Submenu de Duração -->
                 <div class="status-duration-submenu" id="submenu-dnd">
-                  <div class="submenu-header">DURAÇÃO DO NÃO PERTURBAR</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('dnd', 15)">Por 15 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('dnd', 30)">Por 30 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('dnd', 60)">Por 1 Hora</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('dnd', 480)">Por 8 Horas</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('dnd', 1440)">Por 24 Horas</div>
-                  <div class="duration-option highlight" onclick="event.stopPropagation(); setUserStatus('dnd', 'forever')">Para sempre</div>
+                  <div class="submenu-header" data-i18n="status.durationHeader">DURAÇÃO DO NÃO PERTURBAR</div>
+                  <div class="duration-option" data-i18n="status.duration15m" onclick="event.stopPropagation(); setUserStatus('dnd', 15)">Por 15 min</div>
+                  <div class="duration-option" data-i18n="status.duration30m" onclick="event.stopPropagation(); setUserStatus('dnd', 30)">Por 30 min</div>
+                  <div class="duration-option" data-i18n="status.duration1h" onclick="event.stopPropagation(); setUserStatus('dnd', 60)">Por 1 Hora</div>
+                  <div class="duration-option" data-i18n="status.duration8h" onclick="event.stopPropagation(); setUserStatus('dnd', 480)">Por 8 Horas</div>
+                  <div class="duration-option" data-i18n="status.duration24h" onclick="event.stopPropagation(); setUserStatus('dnd', 1440)">Por 24 Horas</div>
+                  <div class="duration-option highlight" data-i18n="status.durationForever" onclick="event.stopPropagation(); setUserStatus('dnd', 'forever')">Para sempre</div>
                 </div>
               </div>
 
@@ -164,21 +170,21 @@
                 <div class="status-menu-left">
                   <span class="status-circle idle"></span>
                   <div class="status-menu-texts">
-                    <span class="status-title">Ausente</span>
-                    <span class="status-desc">Temporariamente fora do teclado</span>
+                    <span class="status-title" data-i18n="status.idle">Ausente</span>
+                    <span class="status-desc" data-i18n="status.idleDesc">Temporariamente fora do teclado</span>
                   </div>
                 </div>
                 <span class="submenu-arrow">▶</span>
 
                 <!-- Submenu de Duração -->
                 <div class="status-duration-submenu" id="submenu-idle">
-                  <div class="submenu-header">DURAÇÃO DO AUSENTE</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('idle', 15)">Por 15 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('idle', 30)">Por 30 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('idle', 60)">Por 1 Hora</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('idle', 480)">Por 8 Horas</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('idle', 1440)">Por 24 Horas</div>
-                  <div class="duration-option highlight" onclick="event.stopPropagation(); setUserStatus('idle', 'forever')">Para sempre</div>
+                  <div class="submenu-header" data-i18n="status.durationHeader">DURAÇÃO DO AUSENTE</div>
+                  <div class="duration-option" data-i18n="status.duration15m" onclick="event.stopPropagation(); setUserStatus('idle', 15)">Por 15 min</div>
+                  <div class="duration-option" data-i18n="status.duration30m" onclick="event.stopPropagation(); setUserStatus('idle', 30)">Por 30 min</div>
+                  <div class="duration-option" data-i18n="status.duration1h" onclick="event.stopPropagation(); setUserStatus('idle', 60)">Por 1 Hora</div>
+                  <div class="duration-option" data-i18n="status.duration8h" onclick="event.stopPropagation(); setUserStatus('idle', 480)">Por 8 Horas</div>
+                  <div class="duration-option" data-i18n="status.duration24h" onclick="event.stopPropagation(); setUserStatus('idle', 1440)">Por 24 Horas</div>
+                  <div class="duration-option highlight" data-i18n="status.durationForever" onclick="event.stopPropagation(); setUserStatus('idle', 'forever')">Para sempre</div>
                 </div>
               </div>
 
@@ -187,21 +193,21 @@
                 <div class="status-menu-left">
                   <span class="status-circle invisible"></span>
                   <div class="status-menu-texts">
-                    <span class="status-title">Invisível</span>
-                    <span class="status-desc">Aparecer offline com acesso total</span>
+                    <span class="status-title" data-i18n="status.invisible">Invisível</span>
+                    <span class="status-desc" data-i18n="status.invisibleDesc">Aparecer offline com acesso total</span>
                   </div>
                 </div>
                 <span class="submenu-arrow">▶</span>
 
                 <!-- Submenu de Duração -->
                 <div class="status-duration-submenu" id="submenu-invisible">
-                  <div class="submenu-header">DURAÇÃO DO INVISÍVEL</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('invisible', 15)">Por 15 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('invisible', 30)">Por 30 min</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('invisible', 60)">Por 1 Hora</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('invisible', 480)">Por 8 Horas</div>
-                  <div class="duration-option" onclick="event.stopPropagation(); setUserStatus('invisible', 1440)">Por 24 Horas</div>
-                  <div class="duration-option highlight" onclick="event.stopPropagation(); setUserStatus('invisible', 'forever')">Para sempre</div>
+                  <div class="submenu-header" data-i18n="status.durationHeader">DURAÇÃO DO INVISÍVEL</div>
+                  <div class="duration-option" data-i18n="status.duration15m" onclick="event.stopPropagation(); setUserStatus('invisible', 15)">Por 15 min</div>
+                  <div class="duration-option" data-i18n="status.duration30m" onclick="event.stopPropagation(); setUserStatus('invisible', 30)">Por 30 min</div>
+                  <div class="duration-option" data-i18n="status.duration1h" onclick="event.stopPropagation(); setUserStatus('invisible', 60)">Por 1 Hora</div>
+                  <div class="duration-option" data-i18n="status.duration8h" onclick="event.stopPropagation(); setUserStatus('invisible', 480)">Por 8 Horas</div>
+                  <div class="duration-option" data-i18n="status.duration24h" onclick="event.stopPropagation(); setUserStatus('invisible', 1440)">Por 24 Horas</div>
+                  <div class="duration-option highlight" data-i18n="status.durationForever" onclick="event.stopPropagation(); setUserStatus('invisible', 'forever')">Para sempre</div>
                 </div>
               </div>
             </div>
@@ -214,26 +220,26 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                 </svg>
-                <span>Editar Perfil</span>
+                <span data-i18n="profile.editProfile">Editar Perfil</span>
               </div>
               <div class="popover-action-item" onclick="openUserSettingsTab('my-account')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
                 </svg>
-                <span>Minha Conta</span>
+                <span data-i18n="profile.myAccount">Minha Conta</span>
               </div>
               <div class="popover-action-item logout" onclick="handleSettingsLogout()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M16 13v-2H7V9h9V7l5 4-5 4zm-2 7H4c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v3h-2V4H4v14h10v-3h2v3c0 1.1-.9 2-2 2z"/>
                 </svg>
-                <span>Sair</span>
+                <span data-i18n="common.logout">Sair</span>
               </div>
             </div>
 
           </div>
         </div>
 
-        <div class="user-info" id="user-info-btn" title="Clique para alterar seu Status Online">
+        <div class="user-info" id="user-info-btn" data-i18n-title="status.clickToChange" title="Clique para alterar seu Status Online">
           <div class="avatar-wrapper">
             <div class="avatar" id="current-avatar">?</div>
             <div class="status-dot online" id="current-status-dot"></div>
@@ -244,9 +250,9 @@
           </div>
         </div>
         <div class="user-controls">
-          <div class="control-btn" id="btn-toggle-mic" title="Desativar Microfone"></div>
-          <div class="control-btn" id="btn-toggle-deaf" title="Desativar Áudio"></div>
-          <div class="control-btn" id="btn-user-settings" title="Configurações de Usuário" onclick="openUserSettingsModal()">
+          <div class="control-btn" id="btn-toggle-mic" data-i18n-title="voice.muteMic" title="Desativar Microfone"></div>
+          <div class="control-btn" id="btn-toggle-deaf" data-i18n-title="voice.deafenAudio" title="Desativar Áudio"></div>
+          <div class="control-btn" id="btn-user-settings" data-i18n-title="profile.userSettings" title="Configurações de Usuário" onclick="openUserSettingsModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M19.738 10H22V14H19.739C19.498 14.931 19.1 15.798 18.566 16.564L20.17 18.168L17.342 20.996L15.738 19.392C14.972 19.926 14.105 20.324 13.174 20.565V22H9.174V20.565C8.243 20.324 7.376 19.926 6.61 19.392L5.006 20.996L2.178 18.168L3.782 16.564C3.248 15.798 2.85 14.931 2.609 14H0.348V10H2.609C2.85 9.069 3.248 8.202 3.782 7.436L2.178 5.832L5.006 3.004L6.61 4.608C7.376 4.074 8.243 3.676 9.174 3.435V2H13.174V3.435C14.105 3.676 14.972 4.074 15.738 4.608L17.342 3.004L20.17 5.832L18.566 7.436C19.1 8.202 19.498 9.069 19.739 10H19.738ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z"/>
             </svg>
@@ -265,22 +271,22 @@
         </span>
         <span id="chat-header-title">geral</span>
         <div style="margin-left: auto; display: flex; gap: 14px; align-items: center; color: var(--text-muted); cursor: pointer;">
-          <div id="header-btn-download-app" class="header-action-btn" title="Baixar SyncCord para Windows" style="display: flex; align-items: center; cursor: pointer;" onclick="openDownloadModal()">
+          <div id="header-btn-download-app" class="header-action-btn" data-i18n-title="download.headerTitle" title="Baixar SyncCord para Windows" style="display: flex; align-items: center; cursor: pointer;" onclick="openDownloadModal()">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
             </svg>
           </div>
-          <span id="header-btn-toggle-voice-chat" title="Abrir Chat de Texto do Canal de Voz" style="display: none; align-items: center;">
+          <span id="header-btn-toggle-voice-chat" data-i18n-title="voice.openVoiceTextChat" title="Abrir Chat de Texto do Canal de Voz" style="display: none; align-items: center;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.486 2 2 6.486 2 12c0 1.837.5 3.557 1.369 5.032L2.094 21.26a1 1 0 0 0 1.218 1.218l4.228-1.275A9.948 9.948 0 0 0 12 22c5.514 0 10-4.486 10-10S17.514 2 12 2zm-5 9a1 1 0 1 1 0-2h10a1 1 0 1 1 0 2H7zm0 4a1 1 0 1 1 0-2h7a1 1 0 1 1 0 2H7z"/>
             </svg>
           </span>
-          <span title="Notificações" style="display: flex; align-items: center;">
+          <span data-i18n-title="settings.notifications" title="Notificações" style="display: flex; align-items: center;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
             </svg>
           </span>
-          <span id="header-btn-invite-members" title="Convidar amigos para o canal" style="display: flex; align-items: center; cursor: pointer;" onclick="openInviteModal()">
+          <span id="header-btn-invite-members" data-i18n-title="invite.headerTitle" title="Convidar amigos para o canal" style="display: flex; align-items: center; cursor: pointer;" onclick="openInviteModal()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
             </svg>
@@ -303,19 +309,19 @@
 
         <!-- Call Action Dock (Bottom Discord Floating Control Bar) -->
         <div class="voice-call-dock" id="voice-call-dock">
-          <button class="dock-btn" id="dock-btn-camera" title="Ativar Câmera">
+          <button class="dock-btn" id="dock-btn-camera" data-i18n-title="voice.enableCamera" title="Ativar Câmera">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
             </svg>
           </button>
-          <button class="dock-btn" id="dock-btn-screenshare" title="Compartilhar Tela">
+          <button class="dock-btn" id="dock-btn-screenshare" data-i18n-title="voice.shareScreenTitle" title="Compartilhar Tela">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M20 3H4c-1.11 0-2 .89-2 2v11c0 1.11.89 2 2 2h4l-2 3v1h12v-1l-2-3h4c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 13H4V5h16v11zm-7-2l4-4h-3V7h-2v3H9l4 4z"/>
             </svg>
           </button>
-          <button class="dock-btn" id="dock-btn-mic" title="Silenciar Microfone"></button>
-          <button class="dock-btn" id="dock-btn-deaf" title="Desativar Áudio"></button>
-          <button class="dock-btn" id="dock-btn-soundboard" title="Soundboard & Sons de Mensagem">
+          <button class="dock-btn" id="dock-btn-mic" data-i18n-title="voice.muteMic" title="Silenciar Microfone"></button>
+          <button class="dock-btn" id="dock-btn-deaf" data-i18n-title="voice.deafenAudio" title="Desativar Áudio"></button>
+          <button class="dock-btn" id="dock-btn-soundboard" data-i18n-title="voice.soundboardTitle" title="Soundboard & Sons de Mensagem">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
             </svg>
@@ -330,17 +336,17 @@
               <path d="M3 9v6h2V9H3zm4-3v12h2V6H7zm4-4v20h2V2h-2zm4 4v12h2V6h-2zm4 3v6h2V9h-2z"/>
             </svg>
           </button>
-          <button class="dock-btn" id="dock-btn-audio-settings" title="Dispositivos de Áudio (Entrada/Saída/Bluetooth)">
+          <button class="dock-btn" id="dock-btn-audio-settings" data-i18n-title="voice.audioDevicesTitle" title="Dispositivos de Áudio (Entrada/Saída/Bluetooth)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M19.738 10H22V14H19.739C19.498 14.931 19.1 15.798 18.566 16.564L20.17 18.168L17.342 20.996L15.738 19.392C14.972 19.926 14.105 20.324 13.174 20.565V22H9.174V20.565C8.243 20.324 7.376 19.926 6.61 19.392L5.006 20.996L2.178 18.168L3.782 16.564C3.248 15.798 2.85 14.931 2.609 14H0.348V10H2.609C2.85 9.069 3.248 8.202 3.782 7.436L2.178 5.832L5.006 3.004L6.61 4.608C7.376 4.074 8.243 3.676 9.174 3.435V2H13.174V3.435C14.105 3.676 14.972 4.074 15.738 4.608L17.342 3.004L20.17 5.832L18.566 7.436C19.1 8.202 19.498 9.069 19.739 10H19.738ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z"/>
             </svg>
           </button>
-          <button class="dock-btn" id="dock-btn-toggle-chat" title="Alternar Chat de Texto">
+          <button class="dock-btn" id="dock-btn-toggle-chat" data-i18n-title="voice.toggleTextChat" title="Alternar Chat de Texto">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.486 2 2 6.486 2 12c0 1.837.5 3.557 1.369 5.032L2.094 21.26a1 1 0 0 0 1.218 1.218l4.228-1.275A9.948 9.948 0 0 0 12 22c5.514 0 10-4.486 10-10S17.514 2 12 2zm-5 9a1 1 0 1 1 0-2h10a1 1 0 1 1 0 2H7zm0 4a1 1 0 1 1 0-2h7a1 1 0 1 1 0 2H7z"/>
             </svg>
           </button>
-          <button class="dock-btn disconnect-dock-btn" id="dock-btn-disconnect" title="Desconectar">
+          <button class="dock-btn disconnect-dock-btn" id="dock-btn-disconnect" data-i18n-title="voice.disconnectTitle" title="Desconectar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
             </svg>
@@ -350,14 +356,14 @@
         <!-- Soundboard Floating Popover -->
         <div class="soundboard-popover" id="soundboard-popover" style="display: none;">
           <div class="soundboard-header">
-            <span>SOUNDBOARD DO SYNCCORD</span>
+            <span data-i18n="voice.soundboardHeader">SOUNDBOARD DO SYNCCORD</span>
             <span class="close-popover-btn" id="close-soundboard-btn">✕</span>
           </div>
           <div class="soundboard-sounds-grid" id="soundboard-sounds-grid">
             <!-- Dynamically or statically injected sound items -->
           </div>
           <div class="soundboard-reactions-row" id="soundboard-reactions-row">
-            <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">REAÇÕES:</span>
+            <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;" data-i18n="voice.reactionsLabel">REAÇÕES:</span>
             <!-- Reaction buttons -->
           </div>
         </div>
@@ -370,9 +376,9 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M11.383 3.07904C11.009 2.92504 10.579 3.01004 10.293 3.29604L6 7.58904H3C2.45 7.58904 2 8.03904 2 8.58904V15.411C2 15.961 2.45 16.411 3 16.411H6L10.293 20.704C10.579 20.99 11.009 21.075 11.383 20.921C11.757 20.767 12 20.404 12 20V4.00004C12 3.59604 11.757 3.23304 11.383 3.07904Z"/>
           </svg>
-          <span>Chat de texto do canal de voz <strong id="voice-chat-banner-name">Lounge de Voz</strong></span>
+          <span><span data-i18n="voice.bannerPrefix">Chat de texto do canal de voz</span> <strong id="voice-chat-banner-name">Lounge de Voz</strong></span>
         </div>
-        <button class="voice-join-quick-btn" id="voice-join-quick-btn">Entrar na Voz</button>
+        <button class="voice-join-quick-btn" id="voice-join-quick-btn" data-i18n="voice.joinVoiceBtn">Entrar na Voz</button>
       </div>
 
       <div class="chat-messages" id="chat-messages">
@@ -381,9 +387,15 @@
 
       <div class="chat-input-wrapper">
         <div class="chat-input-box">
-          <span style="color: var(--text-muted); font-size: 20px; margin-right: 12px; cursor: pointer;">+</span>
+          <button type="button" class="chat-attach-btn" id="chat-attach-btn" data-i18n-title="chat.attachMedia" title="Enviar Imagem ou Mídia">+</button>
+          <input type="file" id="chat-media-file-input" accept="image/*" style="display: none;" />
           <input type="text" class="chat-input" id="chat-input" placeholder="Conversar em #geral">
-          <button class="send-btn" id="send-btn" title="Enviar Mensagem">➤</button>
+          <button type="button" class="chat-emoji-btn" id="chat-emoji-btn" data-i18n-title="chat.openEmojiPicker" title="Selecionar Emoji">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+            </svg>
+          </button>
+          <button class="send-btn" id="send-btn" data-i18n-title="chat.sendMessage" title="Enviar Mensagem">➤</button>
         </div>
       </div>
     </div>
@@ -413,10 +425,10 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.486 2 2 6.486 2 12c0 1.837.5 3.557 1.369 5.032L2.094 21.26a1 1 0 0 0 1.218 1.218l4.228-1.275A9.948 9.948 0 0 0 12 22c5.514 0 10-4.486 10-10S17.514 2 12 2zm-5 9a1 1 0 1 1 0-2h10a1 1 0 1 1 0 2H7zm0 4a1 1 0 1 1 0-2h7a1 1 0 1 1 0 2H7z"/>
           </svg>
-          <span id="voice-chat-sidebar-title-text">Chat de Voz</span>
+          <span id="voice-chat-sidebar-title-text" data-i18n="voice.voiceChatTitle">Chat de Voz</span>
         </div>
         <div class="voice-chat-sidebar-actions">
-          <button class="voice-chat-close-btn" id="voice-chat-sidebar-close-btn" title="Fechar Chat de Voz (Voltar aos Membros)">
+          <button class="voice-chat-close-btn" id="voice-chat-sidebar-close-btn" data-i18n-title="voice.closeVoiceChat" title="Fechar Chat de Voz (Voltar aos Membros)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M18.4 4L12 10.4L5.6 4L4 5.6L10.4 12L4 18.4L5.6 20L12 13.6L18.4 20L20 18.4L13.6 12L20 5.6L18.4 4Z"/>
             </svg>
@@ -430,8 +442,13 @@
 
       <div class="voice-chat-sidebar-input-wrapper">
         <div class="voice-chat-sidebar-input-box">
-          <input type="text" class="voice-chat-sidebar-input" id="voice-chat-sidebar-input" placeholder="Conversar no canal de voz..." />
-          <button class="voice-chat-sidebar-send-btn" id="voice-chat-sidebar-send-btn" title="Enviar Mensagem">
+          <input type="text" class="voice-chat-sidebar-input" id="voice-chat-sidebar-input" data-i18n-placeholder="voice.voiceChatPlaceholder" placeholder="Conversar no canal de voz..." />
+          <button type="button" class="chat-emoji-btn" id="voice-chat-emoji-btn" data-i18n-title="chat.openEmojiPicker" title="Selecionar Emoji">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+            </svg>
+          </button>
+          <button class="voice-chat-sidebar-send-btn" id="voice-chat-sidebar-send-btn" data-i18n-title="chat.sendMessage" title="Enviar Mensagem">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
             </svg>
@@ -451,78 +468,75 @@
       <div class="brand-badge purple-badge">
         <i class="fa-solid fa-cube"></i> SYNCCORD // 3D STAGE
       </div>
-      <h1 class="three-intro-title">
+      <h1 class="three-intro-title" data-i18n-html="auth.heroTitleHtml">
         NEXT-GEN <span>CONVERSATION</span>
       </h1>
-      <p class="three-intro-subtitle">
+      <p class="three-intro-subtitle" data-i18n="auth.heroSubtitle">
         EXPERIÊNCIA 3D EM TEMPO REAL • ÁUDIO OPUS HD • COMUNICAÇÃO IMERSIVA
       </p>
 
       <!-- SELETOR DE GRADIENTE 3D (Cenário Roxo & Lilás com Bolas e Espelhos) -->
       <div class="intro-gradient-selector" id="intro-gradient-selector">
-        <span class="intro-gradient-label"><i class="fa-solid fa-palette"></i> TEMA 3D:</span>
-        <button type="button" class="intro-gradient-pill active" data-theme="lilac-purple" onclick="setIntro3DTheme('lilac-purple')" title="Tema Lilás & Púrpura">
-          <span class="pill-dot" style="background: linear-gradient(135deg, #7c3aed, #c084fc);"></span> Lilás &amp; Púrpura
+        <span class="intro-gradient-label"><i class="fa-solid fa-palette"></i> <span data-i18n="auth.theme3dLabel">TEMA 3D:</span></span>
+        <button type="button" class="intro-gradient-pill active" data-theme="lilac-purple" onclick="setIntro3DTheme('lilac-purple')" data-i18n-title="auth.themeLilacTitle" title="Tema Lilás & Púrpura">
+          <span class="pill-dot" style="background: linear-gradient(135deg, #7c3aed, #c084fc);"></span> <span data-i18n="auth.themeLilac">Lilás &amp; Púrpura</span>
         </button>
-        <button type="button" class="intro-gradient-pill" data-theme="cyber-violet" onclick="setIntro3DTheme('cyber-violet')" title="Tema Ciber Violeta">
-          <span class="pill-dot" style="background: linear-gradient(135deg, #4c1d95, #f472b6);"></span> Ciber Violeta
+        <button type="button" class="intro-gradient-pill" data-theme="cyber-violet" onclick="setIntro3DTheme('cyber-violet')" data-i18n-title="auth.themeCyberTitle" title="Tema Ciber Violeta">
+          <span class="pill-dot" style="background: linear-gradient(135deg, #4c1d95, #f472b6);"></span> <span data-i18n="auth.themeCyber">Ciber Violeta</span>
         </button>
-        <button type="button" class="intro-gradient-pill" data-theme="amethyst-neon" onclick="setIntro3DTheme('amethyst-neon')" title="Tema Ametista Neon">
-          <span class="pill-dot" style="background: linear-gradient(135deg, #240046, #d8b4fe);"></span> Ametista Neon
+        <button type="button" class="intro-gradient-pill" data-theme="amethyst-neon" onclick="setIntro3DTheme('amethyst-neon')" data-i18n-title="auth.themeAmethystTitle" title="Tema Ametista Neon">
+          <span class="pill-dot" style="background: linear-gradient(135deg, #240046, #d8b4fe);"></span> <span data-i18n="auth.themeAmethyst">Ametista Neon</span>
         </button>
       </div>
     </div>
 
     <!-- AUTH MODAL (Login / Register) Sobreposto no Cenário 3D Roxo com Frosted Glass -->
     <div class="three-auth-card" id="auth-modal">
-      <div class="swiss-corner swiss-tl"></div>
-      <div class="swiss-corner swiss-tr"></div>
-      <div class="swiss-corner swiss-bl"></div>
-      <div class="swiss-corner swiss-br"></div>
+      <div class="auth-drag-pill" aria-hidden="true"></div>
 
       <div class="brand-badge purple-badge" style="align-self: center; margin-bottom: 2px;">
         <i class="fa-solid fa-cube"></i> SYNCCORD // AUTH
       </div>
 
-      <div class="modal-title" style="font-size: 22px;">Acesse sua Conta</div>
-      <div class="modal-subtitle">Conecte-se com sua credencial segura ou cadastre-se para entrar nos servidores.</div>
+      <div class="modal-title" style="font-size: 22px;" data-i18n="auth.modalTitle">Acesse sua Conta</div>
+      <div class="modal-subtitle" data-i18n="auth.modalSubtitle">Conecte-se com sua credencial segura ou cadastre-se para entrar nos servidores.</div>
 
       <div class="auth-tabs-row" style="display: flex; gap: 8px; border-bottom: 1px solid var(--purple-border); padding-bottom: 10px;">
         <button id="auth-tab-login" class="btn-secondary active auth-tab-btn" onclick="setAuthTab('login')">
-          <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> <span data-i18n="auth.loginTab">Entrar</span>
         </button>
         <button id="auth-tab-register" class="btn-secondary auth-tab-btn" onclick="setAuthTab('register')">
-          <i class="fa-solid fa-user-plus"></i> Registrar-se
+          <i class="fa-solid fa-user-plus"></i> <span data-i18n="auth.registerTab">Registrar-se</span>
         </button>
       </div>
 
       <form id="auth-form" style="display: flex; flex-direction: column; gap: 14px; margin-top: 6px;">
         <div class="form-group" id="auth-username-group" style="display: none;">
-          <label class="form-label">Nome de Usuário // Username</label>
-          <input type="text" class="form-input purple-input" id="auth-username" placeholder="seu_usuario">
+          <label class="form-label" data-i18n="auth.usernameLabel">Nome de Usuário // Username</label>
+          <input type="text" class="form-input purple-input" id="auth-username" data-i18n-placeholder="auth.usernamePlaceholder" placeholder="seu_usuario">
         </div>
 
         <div class="form-group">
-          <label class="form-label">E-mail // Credencial</label>
-          <input type="email" class="form-input purple-input" id="auth-email" placeholder="nome@exemplo.com" required>
+          <label class="form-label" data-i18n="auth.emailLabel">E-mail // Credencial</label>
+          <input type="email" class="form-input purple-input" id="auth-email" data-i18n-placeholder="auth.emailPlaceholder" placeholder="nome@exemplo.com" required>
         </div>
 
         <div class="form-group" id="auth-password-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="form-label" style="margin-bottom: 0;">Senha // Password</label>
-            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--purple-accent); text-decoration: none; font-weight: 700;">Esqueceu sua senha?</a>
+            <label class="form-label" style="margin-bottom: 0;" data-i18n="auth.passwordLabel">Senha // Password</label>
+            <a href="javascript:void(0)" id="auth-forgot-pw-link" onclick="openForgotPasswordModal()" style="font-size: 11px; font-family: var(--font-mono); color: var(--purple-accent); text-decoration: none; font-weight: 700;" data-i18n="auth.forgotPassword">Esqueceu sua senha?</a>
           </div>
           <input type="password" class="form-input purple-input" id="auth-password" placeholder="••••••••" required>
         </div>
 
         <div id="auth-register-email-notice" style="display: none; padding: 10px 12px; border-radius: 6px; background: rgba(124, 58, 237, 0.16); border: 1px solid rgba(192, 132, 252, 0.35); font-size: 12px; color: #e9d5ff; line-height: 1.4;">
-          <i class="fa-solid fa-envelope-circle-check"></i> Enviaremos um link de confirmação real para o seu e-mail cadastrado. Após confirmar seu e-mail, você poderá definir sua senha de acesso.
+          <i class="fa-solid fa-envelope-circle-check"></i> <span data-i18n="auth.registerEmailNotice">Enviaremos um link de confirmação real para o seu e-mail cadastrado. Após confirmar seu e-mail, você poderá definir sua senha de acesso.</span>
         </div>
 
         <div id="auth-feedback-box" style="display: none; padding: 10px 12px; border-radius: 6px; font-size: 12.5px; line-height: 1.4;"></div>
 
         <button type="submit" class="btn-primary btn-purple" id="auth-submit-btn" style="margin-top: 4px;">
-          <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> <span data-i18n="auth.loginTab">Entrar</span>
         </button>
       </form>
     </div>
@@ -531,20 +545,20 @@
   <!-- FORGOT PASSWORD MODAL -->
   <div class="modal-overlay" id="forgot-password-modal" style="display: none;">
     <div class="modal-content" style="max-width: 440px;">
-      <div class="modal-title">Redefinir sua senha</div>
-      <div class="modal-subtitle">Insira o e-mail associado à sua conta para receber o link de redefinição de senha.</div>
+      <div class="modal-title" data-i18n="auth.forgotModalTitle">Redefinir sua senha</div>
+      <div class="modal-subtitle" data-i18n="auth.forgotModalSubtitle">Insira o e-mail associado à sua conta para receber o link de redefinição de senha.</div>
 
       <form id="forgot-password-form" onsubmit="handleForgotPasswordSubmit(event)" style="display: flex; flex-direction: column; gap: 14px; margin-top: 8px;">
         <div class="form-group">
-          <label class="form-label">E-MAIL</label>
-          <input type="email" class="form-input" id="forgot-password-email" placeholder="nome@exemplo.com" required>
+          <label class="form-label" data-i18n="myAccount.email">E-MAIL</label>
+          <input type="email" class="form-input" id="forgot-password-email" data-i18n-placeholder="auth.emailPlaceholder" placeholder="nome@exemplo.com" required>
         </div>
 
         <div id="forgot-password-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('forgot-password-modal')">Voltar</button>
-          <button type="submit" class="btn-primary" id="forgot-password-submit-btn" style="padding: 0 20px;">Enviar Link</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('forgot-password-modal')" data-i18n="common.back">Voltar</button>
+          <button type="submit" class="btn-primary" id="forgot-password-submit-btn" style="padding: 0 20px;" data-i18n="auth.sendResetLink">Enviar Link</button>
         </div>
       </form>
     </div>
@@ -553,17 +567,17 @@
   <!-- RESET PASSWORD MODAL -->
   <div class="modal-overlay" id="reset-password-modal" style="display: none;">
     <div class="modal-content" style="max-width: 460px; padding: 28px 24px;">
-      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;">Criar Nova Senha</div>
-      <div class="modal-subtitle">Digite e confirme sua nova senha abaixo. O link de redefinição foi autenticado.</div>
+      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;" data-i18n="auth.resetModalTitle">Criar Nova Senha</div>
+      <div class="modal-subtitle" data-i18n="auth.resetModalSubtitle">Digite e confirme sua nova senha abaixo. O link de redefinição foi autenticado.</div>
 
       <input type="hidden" id="reset-password-token" value="">
 
       <form id="reset-password-form" onsubmit="handleResetPasswordSubmit(event)" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
         <div class="form-group">
-          <label class="form-label">NOVA SENHA</label>
+          <label class="form-label" data-i18n="auth.newPasswordLabel">NOVA SENHA</label>
           <div class="password-input-wrapper">
-            <input type="password" class="form-input" id="reset-new-password" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
-            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-new-password')" title="Mostrar/Ocultar senha">
+            <input type="password" class="form-input" id="reset-new-password" data-i18n-placeholder="auth.min6CharsPlaceholder" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-new-password')" data-i18n-title="auth.togglePasswordTitle" title="Mostrar/Ocultar senha">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
@@ -572,10 +586,10 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">CONFIRMAR NOVA SENHA</label>
+          <label class="form-label" data-i18n="auth.confirmNewPasswordLabel">CONFIRMAR NOVA SENHA</label>
           <div class="password-input-wrapper">
-            <input type="password" class="form-input" id="reset-confirm-password" placeholder="Repita a nova senha" minlength="6" required style="padding-right: 42px;">
-            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-confirm-password')" title="Mostrar/Ocultar senha">
+            <input type="password" class="form-input" id="reset-confirm-password" data-i18n-placeholder="auth.repeatPasswordPlaceholder" placeholder="Repita a nova senha" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('reset-confirm-password')" data-i18n-title="auth.togglePasswordTitle" title="Mostrar/Ocultar senha">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
@@ -586,8 +600,8 @@
         <div id="reset-password-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('reset-password-modal')">Cancelar</button>
-          <button type="submit" class="btn-primary" id="reset-password-submit-btn" style="padding: 0 24px;">Salvar Nova Senha</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('reset-password-modal')" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-primary" id="reset-password-submit-btn" style="padding: 0 24px;" data-i18n="auth.saveNewPassword">Salvar Nova Senha</button>
         </div>
       </form>
     </div>
@@ -596,17 +610,17 @@
   <!-- CONFIRM EMAIL & SET PASSWORD MODAL -->
   <div class="modal-overlay" id="confirm-email-modal" style="display: none;">
     <div class="modal-content" style="max-width: 460px; padding: 28px 24px;">
-      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;">E-mail Confirmado! Defina sua Senha</div>
-      <div class="modal-subtitle" id="confirm-email-subtitle">Seu e-mail foi validado com sucesso. Agora crie uma senha segura para concluir seu cadastro no SyncCord.</div>
+      <div class="modal-title" style="font-size: 22px; margin-bottom: 6px;" data-i18n="auth.confirmEmailTitle">E-mail Confirmado! Defina sua Senha</div>
+      <div class="modal-subtitle" id="confirm-email-subtitle" data-i18n="auth.confirmEmailSubtitle">Seu e-mail foi validado com sucesso. Agora crie uma senha segura para concluir seu cadastro no SyncCord.</div>
 
       <input type="hidden" id="confirm-email-token" value="">
 
       <form id="confirm-email-form" onsubmit="handleConfirmEmailSubmit(event)" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
         <div class="form-group">
-          <label class="form-label">DEFINIR SENHA</label>
+          <label class="form-label" data-i18n="auth.setPasswordLabel">DEFINIR SENHA</label>
           <div class="password-input-wrapper">
-            <input type="password" class="form-input" id="confirm-email-password" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
-            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password')" title="Mostrar/Ocultar senha">
+            <input type="password" class="form-input" id="confirm-email-password" data-i18n-placeholder="auth.min6CharsPlaceholder" placeholder="Digite pelo menos 6 caracteres" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password')" data-i18n-title="auth.togglePasswordTitle" title="Mostrar/Ocultar senha">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
@@ -615,10 +629,10 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">CONFIRMAR SENHA</label>
+          <label class="form-label" data-i18n="auth.confirmPasswordLabel">CONFIRMAR SENHA</label>
           <div class="password-input-wrapper">
-            <input type="password" class="form-input" id="confirm-email-password-confirm" placeholder="Repita a senha" minlength="6" required style="padding-right: 42px;">
-            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password-confirm')" title="Mostrar/Ocultar senha">
+            <input type="password" class="form-input" id="confirm-email-password-confirm" data-i18n-placeholder="auth.repeatPasswordPlaceholder" placeholder="Repita a senha" minlength="6" required style="padding-right: 42px;">
+            <button type="button" class="password-toggle-eye" onclick="togglePasswordVisibility('confirm-email-password-confirm')" data-i18n-title="auth.togglePasswordTitle" title="Mostrar/Ocultar senha">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
               </svg>
@@ -629,8 +643,8 @@
         <div id="confirm-email-feedback" style="display: none; padding: 10px; border-radius: 6px; font-size: 13px; line-height: 1.4;"></div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('confirm-email-modal')">Cancelar</button>
-          <button type="submit" class="btn-primary" id="confirm-email-submit-btn" style="padding: 0 24px;">Ativar Conta e Entrar</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('confirm-email-modal')" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-primary" id="confirm-email-submit-btn" style="padding: 0 24px;" data-i18n="auth.activateAndSignIn">Ativar Conta e Entrar</button>
         </div>
       </form>
     </div>
@@ -639,27 +653,27 @@
   <!-- EDIT CHANNEL MODAL (Rename Text or Voice Channel) -->
   <div class="modal-overlay" id="edit-channel-modal" style="display: none;">
     <div class="modal-content" style="max-width: 440px; padding: 24px; border-radius: 8px; background: #313338; box-shadow: 0 8px 32px rgba(0,0,0,0.6); text-align: left; gap: 0; position: relative;">
-      <div id="edit-channel-modal-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin-bottom: 8px;">
+      <div id="edit-channel-modal-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin-bottom: 8px;" data-i18n="channels.editChannelTitle">
         Editar Canal
       </div>
-      <div id="edit-channel-modal-subtitle" style="font-size: 14px; color: #949ba4; line-height: 1.4; margin-bottom: 20px;">
+      <div id="edit-channel-modal-subtitle" style="font-size: 14px; color: #949ba4; line-height: 1.4; margin-bottom: 20px;" data-i18n="channels.editChannelSubtitle">
         Altere o nome deste canal. As alterações serão aplicadas em tempo real para todos no servidor.
       </div>
       <input type="hidden" id="edit-channel-id-input" value="" />
       <input type="hidden" id="edit-channel-type-input" value="0" />
       <div class="form-group" style="margin-bottom: 24px;">
-        <label class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 8px;">NOME DO CANAL</label>
+        <label class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 8px;" data-i18n="channels.channelNameLabel">NOME DO CANAL</label>
         <div class="channel-name-input-wrapper" style="background-color: #1e1f22; border-color: #1e1f22;">
           <span id="edit-channel-prefix-icon" style="color: var(--text-muted); font-size: 16px; font-weight: bold; margin-right: 6px;">#</span>
-          <input type="text" class="form-input" id="edit-channel-name-input" placeholder="nome-do-canal" maxlength="100" style="border: none; padding: 0; background: transparent; width: 100%; color: #f2f3f5;" />
+          <input type="text" class="form-input" id="edit-channel-name-input" data-i18n-placeholder="channels.channelNamePlaceholder" placeholder="nome-do-canal" maxlength="100" style="border: none; padding: 0; background: transparent; width: 100%; color: #f2f3f5;" />
         </div>
         <div id="edit-channel-error" style="color: #fa777c; font-size: 12px; margin-top: 6px; display: none;"></div>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; background: #2b2d31; margin: 0 -24px -24px -24px; padding: 16px 24px; border-radius: 0 0 8px 8px;">
-        <button type="button" class="btn-secondary" onclick="closeEditChannelModal()" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-secondary" onclick="closeEditChannelModal()" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="common.cancel">
           Cancelar
         </button>
-        <button type="button" class="btn-primary" id="edit-channel-submit-btn" onclick="submitEditChannelModal()" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-primary" id="edit-channel-submit-btn" onclick="submitEditChannelModal()" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="common.save">
           Salvar Alterações
         </button>
       </div>
@@ -670,16 +684,16 @@
   <div class="modal-overlay" id="guild-notifications-modal" style="display: none;">
     <div class="modal-content" style="max-width: 480px; padding: 24px; border-radius: 8px; background: #313338; box-shadow: 0 8px 32px rgba(0,0,0,0.6); text-align: left; gap: 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <div class="modal-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin: 0;">Configurações de Notificação</div>
+        <div class="modal-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin: 0;" data-i18n="guilds.notifModalTitle">Configurações de Notificação</div>
         <button type="button" onclick="closeModal('guild-notifications-modal')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;">✕</button>
       </div>
-      <div id="guild-notif-modal-subtitle" style="font-size: 13px; color: #949ba4; margin-bottom: 18px;">Servidor</div>
+      <div id="guild-notif-modal-subtitle" style="font-size: 13px; color: #949ba4; margin-bottom: 18px;" data-i18n="guilds.serverLabel">Servidor</div>
       <input type="hidden" id="guild-notif-guild-id" value="" />
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
         <div>
-          <div style="font-size: 14px; font-weight: 600; color: #f2f3f5;">Silenciar Servidor</div>
-          <div style="font-size: 12px; color: #949ba4;">Impede indicadores de mensagens não lidas e alertas deste servidor</div>
+          <div style="font-size: 14px; font-weight: 600; color: #f2f3f5;" data-i18n="guilds.muteServer">Silenciar Servidor</div>
+          <div style="font-size: 12px; color: #949ba4;" data-i18n="guilds.muteServerDesc">Impede indicadores de mensagens não lidas e alertas deste servidor</div>
         </div>
         <label class="discord-switch">
           <input type="checkbox" id="guild-notif-mute-checkbox" />
@@ -688,25 +702,25 @@
       </div>
 
       <div class="form-group" style="margin-bottom: 18px;">
-        <label class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 10px;">CONFIGURAÇÕES DE NOTIFICAÇÃO DO SERVIDOR</label>
+        <label class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 10px;" data-i18n="guilds.serverNotifSettingsLabel">CONFIGURAÇÕES DE NOTIFICAÇÃO DO SERVIDOR</label>
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #2b2d31; border-radius: 6px; cursor: pointer;">
             <input type="radio" name="guild-notif-level" value="all" checked />
-            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;">Todas as mensagens</span>
+            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;" data-i18n="guilds.notifAllMessages">Todas as mensagens</span>
           </label>
           <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #2b2d31; border-radius: 6px; cursor: pointer;">
             <input type="radio" name="guild-notif-level" value="mentions" />
-            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;">Apenas @menções</span>
+            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;" data-i18n="guilds.notifOnlyMentions">Apenas @menções</span>
           </label>
           <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #2b2d31; border-radius: 6px; cursor: pointer;">
             <input type="radio" name="guild-notif-level" value="nothing" />
-            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;">Nada</span>
+            <span style="font-size: 14px; font-weight: 500; color: #f2f3f5;" data-i18n="guilds.notifNothing">Nada</span>
           </label>
         </div>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px;">
-        <span style="font-size: 13px; font-weight: 600; color: #f2f3f5;">Suprimir @everyone e @here</span>
+        <span style="font-size: 13px; font-weight: 600; color: #f2f3f5;" data-i18n="guilds.suppressEveryone">Suprimir @everyone e @here</span>
         <label class="discord-switch">
           <input type="checkbox" id="guild-notif-suppress-everyone" />
           <span class="discord-slider"></span>
@@ -714,8 +728,8 @@
       </div>
 
       <div style="display: flex; justify-content: flex-end; gap: 12px; background: #2b2d31; margin: 0 -24px -24px -24px; padding: 16px 24px; border-radius: 0 0 8px 8px;">
-        <button type="button" class="btn-secondary" onclick="closeModal('guild-notifications-modal')">Cancelar</button>
-        <button type="button" class="btn-primary" onclick="saveGuildNotificationSettingsModal()">Concluído</button>
+        <button type="button" class="btn-secondary" onclick="closeModal('guild-notifications-modal')" data-i18n="common.cancel">Cancelar</button>
+        <button type="button" class="btn-primary" onclick="saveGuildNotificationSettingsModal()" data-i18n="common.done">Concluído</button>
       </div>
     </div>
   </div>
@@ -723,65 +737,65 @@
   <!-- CREATE / JOIN GUILD MODAL -->
   <div class="modal-overlay" id="create-guild-modal">
     <div class="modal-content">
-      <div class="modal-title">Adicionar um servidor</div>
-      <div class="modal-subtitle">Crie seu próprio servidor ou entre num servidor existente com convite.</div>
+      <div class="modal-title" data-i18n="guilds.addServerTitle">Adicionar um servidor</div>
+      <div class="modal-subtitle" data-i18n="guilds.addServerSubtitle">Crie seu próprio servidor ou entre num servidor existente com convite.</div>
 
       <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 14px;">
-        <button id="guild-tab-create" class="btn-secondary active" style="font-weight: 700; color: var(--accent);" onclick="setGuildTab('create')">Criar Servidor</button>
-        <button id="guild-tab-join" class="btn-secondary" style="font-weight: 700;" onclick="setGuildTab('join')">Entrar com Convite</button>
+        <button id="guild-tab-create" class="btn-secondary active" style="font-weight: 700; color: var(--accent);" onclick="setGuildTab('create')" data-i18n="guilds.createServerTab">Criar Servidor</button>
+        <button id="guild-tab-join" class="btn-secondary" style="font-weight: 700;" onclick="setGuildTab('join')" data-i18n="guilds.joinInviteTab">Entrar com Convite</button>
       </div>
 
       <form id="create-guild-form" style="display: flex; flex-direction: column; gap: 14px;">
         <!-- CIRCULAR SERVER ICON UPLOAD MOLD (Discord Style) -->
         <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 4px;">
-          <div class="avatar-mold-container" id="guild-icon-mold-btn" onclick="triggerGuildIconUpload()" title="Clique para escolher uma imagem do seu computador" style="width: 80px; height: 80px; border: 2px dashed var(--accent); background-color: var(--bg-secondary);">
+          <div class="avatar-mold-container" id="guild-icon-mold-btn" onclick="triggerGuildIconUpload()" data-i18n-title="guilds.chooseImageTitle" title="Clique para escolher uma imagem do seu computador" style="width: 80px; height: 80px; border: 2px dashed var(--accent); background-color: var(--bg-secondary);">
             <div id="guild-icon-display-container" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
               <div id="guild-icon-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); font-size: 11px; text-align: center; gap: 4px;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/>
                   <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
                 </svg>
-                <span style="font-weight: 700; font-size: 10px;">UPLOAD</span>
+                <span style="font-weight: 700; font-size: 10px;" data-i18n="guilds.uploadBadge">UPLOAD</span>
               </div>
             </div>
             <!-- Camera Hover Overlay -->
             <div class="avatar-mold-overlay">
-              <span class="avatar-mold-overlay-text">Mudar</span>
+              <span class="avatar-mold-overlay-text" data-i18n="guilds.changeIcon">Mudar</span>
             </div>
           </div>
           <input type="file" id="guild-icon-file-input" accept="image/*" style="display: none;" onchange="handleGuildIconFileSelected(event)" />
           <div style="display: flex; gap: 8px; margin-top: 8px;">
-            <button type="button" class="settings-btn-inline" style="font-size: 11px; padding: 4px 10px;" onclick="triggerGuildIconUpload()">Escolher Imagem</button>
-            <button type="button" class="settings-btn-inline" id="btn-remove-guild-icon" style="font-size: 11px; padding: 4px 10px; display: none; color: var(--red);" onclick="handleRemoveGuildIcon()">Remover</button>
+            <button type="button" class="settings-btn-inline" style="font-size: 11px; padding: 4px 10px;" onclick="triggerGuildIconUpload()" data-i18n="guilds.chooseImageBtn">Escolher Imagem</button>
+            <button type="button" class="settings-btn-inline" id="btn-remove-guild-icon" style="font-size: 11px; padding: 4px 10px; display: none; color: var(--red);" onclick="handleRemoveGuildIcon()" data-i18n="guilds.removeImageBtn">Remover</button>
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Nome do Servidor</label>
-          <input type="text" class="form-input" id="guild-name-input" placeholder="Servidor do Marcos" required>
+          <label class="form-label" data-i18n="guilds.serverNameLabel">Nome do Servidor</label>
+          <input type="text" class="form-input" id="guild-name-input" data-i18n-placeholder="guilds.serverNamePlaceholder" placeholder="Servidor do Marcos" required>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('create-guild-modal')">Voltar</button>
-          <button type="submit" class="btn-primary" style="padding: 0 20px;">Criar</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('create-guild-modal')" data-i18n="common.back">Voltar</button>
+          <button type="submit" class="btn-primary" style="padding: 0 20px;" data-i18n="common.create">Criar</button>
         </div>
       </form>
 
       <form id="join-guild-form" style="display: none; flex-direction: column; gap: 14px;">
         <div class="form-group">
-          <label class="form-label">LINK, ID OU NOME DO SERVIDOR</label>
-          <input type="text" class="form-input" id="join-guild-input" placeholder="ex: heldbox, 1569380463196377089 ou link" required>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Cole o link de convite, ID numérico ou nome do servidor.</div>
+          <label class="form-label" data-i18n="guilds.joinInputLabel">LINK, ID OU NOME DO SERVIDOR</label>
+          <input type="text" class="form-input" id="join-guild-input" data-i18n-placeholder="guilds.joinInputPlaceholder" placeholder="ex: heldbox, 1569380463196377089 ou link" required>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" data-i18n="guilds.joinInputHint">Cole o link de convite, ID numérico ou nome do servidor.</div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('create-guild-modal')">Voltar</button>
-          <button type="submit" class="btn-primary" style="padding: 0 20px;">Entrar no Servidor</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('create-guild-modal')" data-i18n="common.back">Voltar</button>
+          <button type="submit" class="btn-primary" style="padding: 0 20px;" data-i18n="guilds.joinServerBtn">Entrar no Servidor</button>
         </div>
 
         <!-- Lista de Servidores da Comunidade para entrar com 1 clique -->
         <div id="discover-guilds-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Servidores Disponíveis na Comunidade</div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;" data-i18n="guilds.communityServersLabel">Servidores Disponíveis na Comunidade</div>
           <div id="discover-guilds-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;"></div>
         </div>
       </form>
@@ -791,43 +805,43 @@
   <!-- CREATE CHANNEL MODAL -->
   <div class="modal-overlay" id="create-channel-modal">
     <div class="modal-content" style="max-width: 460px;">
-      <div class="modal-title">Criar Canal</div>
-      <div class="modal-subtitle">no servidor <span id="create-channel-guild-name" style="color: var(--header-primary); font-weight: 600;"></span></div>
+      <div class="modal-title" data-i18n="channels.createChannel">Criar Canal</div>
+      <div class="modal-subtitle"><span data-i18n="channels.inServerPrefix">no servidor</span> <span id="create-channel-guild-name" style="color: var(--header-primary); font-weight: 600;"></span></div>
 
       <form id="create-channel-form" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
         <div>
-          <label class="form-label">TIPO DE CANAL</label>
+          <label class="form-label" data-i18n="channels.channelTypeLabel">TIPO DE CANAL</label>
           <div class="channel-type-selector">
             <label class="channel-type-card active" id="channel-type-text-card">
               <input type="radio" name="channel-type" value="0" checked style="display: none;">
               <span class="type-icon">#</span>
               <div class="type-info">
-                <div class="type-title">Texto</div>
-                <div class="type-desc">Poste mensagens, imagens e conversas</div>
+                <div class="type-title" data-i18n="channels.text">Texto</div>
+                <div class="type-desc" data-i18n="channels.textTypeDesc">Poste mensagens, imagens e conversas</div>
               </div>
             </label>
             <label class="channel-type-card" id="channel-type-voice-card">
               <input type="radio" name="channel-type" value="2" style="display: none;">
               <span class="type-icon">🔊</span>
               <div class="type-info">
-                <div class="type-title">Voz</div>
-                <div class="type-desc">Converse por voz, vídeo e compartilhe tela</div>
+                <div class="type-title" data-i18n="channels.voice">Voz</div>
+                <div class="type-desc" data-i18n="channels.voiceTypeDesc">Converse por voz, vídeo e compartilhe tela</div>
               </div>
             </label>
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">NOME DO CANAL</label>
+          <label class="form-label" data-i18n="channels.channelNameLabel">NOME DO CANAL</label>
           <div class="channel-name-input-wrapper">
             <span id="channel-prefix-icon" style="color: var(--text-muted); font-size: 16px; font-weight: bold; margin-right: 6px;">#</span>
-            <input type="text" class="form-input" id="channel-name-input" placeholder="novo-canal" required style="border: none; padding: 0; background: transparent; width: 100%;">
+            <input type="text" class="form-input" id="channel-name-input" data-i18n-placeholder="channels.newChannelPlaceholder" placeholder="novo-canal" required style="border: none; padding: 0; background: transparent; width: 100%;">
           </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <button type="button" class="btn-secondary" onclick="closeModal('create-channel-modal')">Cancelar</button>
-          <button type="submit" class="btn-primary" style="padding: 0 20px;">Criar Canal</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('create-channel-modal')" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-primary" style="padding: 0 20px;" data-i18n="channels.createChannel">Criar Canal</button>
         </div>
       </form>
     </div>
@@ -836,20 +850,20 @@
   <!-- INVITE TO VOICE MODAL -->
   <div class="modal-overlay" id="invite-voice-modal">
     <div class="modal-content">
-      <div class="modal-title" id="invite-modal-title">Convidar amigos para o canal de voz</div>
-      <div class="modal-subtitle">Envie este link para convidar seus amigos para conversar nesta sala de voz.</div>
+      <div class="modal-title" id="invite-modal-title" data-i18n="invite.modalTitle">Convidar amigos para o canal de voz</div>
+      <div class="modal-subtitle" data-i18n="invite.modalSubtitle">Envie este link para convidar seus amigos para conversar nesta sala de voz.</div>
 
       <div class="invite-box">
-        <label class="form-label">LINK DE CONVITE</label>
+        <label class="form-label" data-i18n="invite.inviteLinkLabel">LINK DE CONVITE</label>
         <div class="invite-input-row">
           <input type="text" class="form-input invite-input" id="invite-link-input" readonly>
-          <button type="button" class="btn-primary copy-invite-btn" id="copy-invite-btn">Copiar</button>
+          <button type="button" class="btn-primary copy-invite-btn" id="copy-invite-btn" data-i18n="common.copy">Copiar</button>
         </div>
-        <div class="invite-tip">💡 Este link permite acesso direto à conversa em tempo real.</div>
+        <div class="invite-tip" data-i18n="invite.inviteTip">💡 Este link permite acesso direto à conversa em tempo real.</div>
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-        <button type="button" class="btn-secondary" onclick="closeModal('invite-voice-modal')">Fechar</button>
+        <button type="button" class="btn-secondary" onclick="closeModal('invite-voice-modal')" data-i18n="common.close">Fechar</button>
       </div>
     </div>
   </div>
@@ -858,38 +872,38 @@
   <div class="modal-overlay" id="member-roles-modal">
     <div class="modal-content" style="max-width: 480px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <div class="modal-title" style="margin-bottom: 0;">Gerenciar Cargos</div>
-        <button type="button" onclick="closeModal('member-roles-modal')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" title="Fechar">✕</button>
+        <div class="modal-title" style="margin-bottom: 0;" data-i18n="roles.manageRolesTitle">Gerenciar Cargos</div>
+        <button type="button" onclick="closeModal('member-roles-modal')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" data-i18n-title="common.close" title="Fechar">✕</button>
       </div>
 
       <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
         <div id="role-modal-member-avatar" class="avatar" style="width: 40px; height: 40px; font-size: 16px;">??</div>
         <div style="flex: 1; min-width: 0;">
           <div id="role-modal-member-name" style="font-weight: 700; color: var(--header-primary); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Membro</div>
-          <div style="font-size: 12px; color: var(--text-muted);">Atribua ou remova cargos para este membro no servidor</div>
+          <div style="font-size: 12px; color: var(--text-muted);" data-i18n="roles.manageRolesSubtitle">Atribua ou remova cargos para este membro no servidor</div>
         </div>
       </div>
 
       <!-- Roles List Container -->
-      <label class="form-label" style="margin-bottom: 8px;">CARGOS DO SERVIDOR</label>
+      <label class="form-label" style="margin-bottom: 8px;" data-i18n="roles.serverRolesLabel">CARGOS DO SERVIDOR</label>
       <div id="member-roles-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; padding-right: 4px; min-height: 80px;">
-        <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px;">Carregando cargos...</div>
+        <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px;" data-i18n="roles.loadingRoles">Carregando cargos...</div>
       </div>
 
       <!-- Quick Role Creator Section -->
       <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; margin-top: 4px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 11px; font-weight: 700; color: var(--header-secondary);">CRIAR NOVO CARGO RÁPIDO</span>
+          <span style="font-size: 11px; font-weight: 700; color: var(--header-secondary);" data-i18n="roles.quickCreateLabel">CRIAR NOVO CARGO RÁPIDO</span>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <input type="text" id="quick-role-name" class="form-input" placeholder="Nome do cargo (ex: Mod, VIP)" style="flex: 1;" />
-          <input type="color" id="quick-role-color" value="#5865F2" style="width: 38px; height: 38px; padding: 2px; border: none; border-radius: 6px; cursor: pointer; background: var(--bg-tertiary);" title="Escolher cor do cargo" />
-          <button type="button" class="btn-primary" onclick="quickCreateRole()" style="white-space: nowrap; padding: 0 14px; font-size: 13px;">+ Criar</button>
+          <input type="text" id="quick-role-name" class="form-input" data-i18n-placeholder="roles.roleNamePlaceholder" placeholder="Nome do cargo (ex: Mod, VIP)" style="flex: 1;" />
+          <input type="color" id="quick-role-color" value="#5865F2" style="width: 38px; height: 38px; padding: 2px; border: none; border-radius: 6px; cursor: pointer; background: var(--bg-tertiary);" data-i18n-title="roles.chooseColorTitle" title="Escolher cor do cargo" />
+          <button type="button" class="btn-primary" onclick="quickCreateRole()" style="white-space: nowrap; padding: 0 14px; font-size: 13px;" data-i18n="roles.createRoleBtn">+ Criar</button>
         </div>
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 18px;">
-        <button type="button" class="btn-secondary" onclick="closeModal('member-roles-modal')">Concluir</button>
+        <button type="button" class="btn-secondary" onclick="closeModal('member-roles-modal')" data-i18n="common.done">Concluir</button>
       </div>
     </div>
   </div>
@@ -897,17 +911,17 @@
   <!-- AUDIO DEVICES MODAL (Microphone, Speaker, Bluetooth) -->
   <div class="modal-overlay" id="audio-devices-modal">
     <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-title">Dispositivos de Áudio</div>
-      <div class="modal-subtitle">Selecione por onde você deseja falar e ouvir (incluindo fones e caixas Bluetooth).</div>
+      <div class="modal-title" data-i18n="audioModal.title">Dispositivos de Áudio</div>
+      <div class="modal-subtitle" data-i18n="audioModal.subtitle">Selecione por onde você deseja falar e ouvir (incluindo fones e caixas Bluetooth).</div>
 
       <div style="display: flex; flex-direction: column; gap: 18px; margin-top: 14px;">
         
         <!-- Input Device (Microphone) -->
         <div class="form-group">
-          <label class="form-label">DISPOSITIVO DE ENTRADA (MICROFONE)</label>
+          <label class="form-label" data-i18n="audioModal.inputDeviceLabel">DISPOSITIVO DE ENTRADA (MICROFONE)</label>
           <select class="form-input" id="audio-input-select"></select>
           <div class="device-test-container">
-            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">TESTE DE MICROFONE:</span>
+            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;" data-i18n="audioModal.micTestLabel">TESTE DE MICROFONE:</span>
             <div class="mic-meter-bar">
               <div class="mic-meter-fill" id="mic-meter-fill"></div>
             </div>
@@ -916,13 +930,13 @@
 
         <!-- Output Device (Speaker / Headphone / Bluetooth) -->
         <div class="form-group">
-          <label class="form-label">DISPOSITIVO DE SAÍDA (FONE / CAIXA DE SOM / BLUETOOTH)</label>
+          <label class="form-label" data-i18n="audioModal.outputDeviceLabel">DISPOSITIVO DE SAÍDA (FONE / CAIXA DE SOM / BLUETOOTH)</label>
           <select class="form-input" id="audio-output-select"></select>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
-            <button type="button" class="btn-secondary" id="btn-test-speaker" style="font-size: 12px; padding: 6px 12px;">
+            <button type="button" class="btn-secondary" id="btn-test-speaker" style="font-size: 12px; padding: 6px 12px;" data-i18n="audioModal.testSpeakerBtn">
               🔊 Testar Som de Saída
             </button>
-            <span id="speaker-test-status" style="font-size: 11px; color: var(--green); display: none;">Tocando som...</span>
+            <span id="speaker-test-status" style="font-size: 11px; color: var(--green); display: none;" data-i18n="audioModal.playingSound">Tocando som...</span>
           </div>
         </div>
 
@@ -930,8 +944,8 @@
         <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);">🛡️ Supressão de Ruído Krisp</div>
-              <div style="font-size: 11px; color: var(--text-muted);">Cancela ruídos de fundo, cooler, teclado e cliques</div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);" data-i18n="audioModal.krispTitle">🛡️ Supressão de Ruído Krisp</div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="audioModal.krispDesc">Cancela ruídos de fundo, cooler, teclado e cliques</div>
             </div>
             <label class="discord-switch">
               <input type="checkbox" id="modal-toggle-krisp" checked />
@@ -940,8 +954,8 @@
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
             <div>
-              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);">🎙️ Isolamento de Voz <span style="font-size: 10px; background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">FLAG</span></div>
-              <div style="font-size: 11px; color: var(--text-muted);">Isola estritamente a frequência da voz humana (Padrão Discord)</div>
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-header);"><span data-i18n="audioModal.voiceIsolationTitle">🎙️ Isolamento de Voz</span> <span style="font-size: 10px; background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">FLAG</span></div>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="audioModal.voiceIsolationDesc">Isola estritamente a frequência da voz humana (Padrão Discord)</div>
             </div>
             <label class="discord-switch">
               <input type="checkbox" id="modal-toggle-voice-isolation" checked />
@@ -950,14 +964,14 @@
           </div>
         </div>
 
-        <div style="background: rgba(88,101,242,0.1); border: 1px solid rgba(88,101,242,0.25); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--text-normal);">
+        <div style="background: rgba(88,101,242,0.1); border: 1px solid rgba(88,101,242,0.25); border-radius: 6px; padding: 10px; font-size: 12px; color: var(--text-normal);" data-i18n-html="audioModal.autoDetectTipHtml">
           💡 <strong>Reconhecimento Automático:</strong> Fones de ouvido e caixas de som Bluetooth são identificados automaticamente assim que conectados ao computador.
         </div>
 
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-        <button type="button" class="btn-primary" onclick="closeModal('audio-devices-modal')">Concluído</button>
+        <button type="button" class="btn-primary" onclick="closeModal('audio-devices-modal')" data-i18n="common.done">Concluído</button>
       </div>
     </div>
   </div>
@@ -966,7 +980,7 @@
   <div class="modal-overlay" id="download-desktop-modal">
     <div class="modal-content" style="max-width: 440px; text-align: center; position: relative; padding: 28px 24px;">
       <div style="display: flex; justify-content: flex-end; position: absolute; right: 16px; top: 16px;">
-        <button type="button" onclick="closeModal('download-desktop-modal')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 4px;" title="Fechar">✕</button>
+        <button type="button" onclick="closeModal('download-desktop-modal')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 4px;" data-i18n-title="common.close" title="Fechar">✕</button>
       </div>
 
       <div style="display: flex; justify-content: center; margin-bottom: 16px; margin-top: 4px;">
@@ -977,12 +991,12 @@
         </div>
       </div>
 
-      <div class="modal-title" style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 24px;">Baixar SyncCord para Windows</div>
+      <div class="modal-title" style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 24px;" data-i18n="download.modalTitle">Baixar SyncCord para Windows</div>
 
       <!-- Dynamic Download Status Toast -->
       <div id="download-progress-status" style="display: none; background: rgba(35, 165, 90, 0.15); border: 1px solid rgba(35, 165, 90, 0.4); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: #23a55a; text-align: left; align-items: center; gap: 8px;">
         <span style="font-size: 16px;">✓</span>
-        <span>Download iniciado com sucesso!</span>
+        <span data-i18n="download.startedSuccess">Download iniciado com sucesso!</span>
       </div>
 
       <!-- Action Buttons -->
@@ -991,26 +1005,68 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
           </svg>
-          Baixar SyncCordSetup.exe
+          <span data-i18n="download.buttonLabel">Baixar SyncCordSetup.exe</span>
         </a>
       </div>
+    </div>
+  </div>
+
+  <!-- CONNECTION SYNC / ACCOUNT LINKING MODAL (YouTube, GitHub, Spotify, Steam, Twitch) -->
+  <div class="modal-overlay" id="connection-sync-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 480px; padding: 24px; border-radius: 10px; background: #313338; box-shadow: 0 12px 38px rgba(0,0,0,0.65); text-align: left; gap: 0; position: relative;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div id="connection-modal-brand-icon" class="connection-provider-icon-wrap" style="width: 40px; height: 40px;"></div>
+          <div>
+            <div id="connection-modal-title" style="font-size: 19px; font-weight: 800; color: #f2f3f5;">Vincular Conta</div>
+            <div id="connection-modal-subtitle" style="font-size: 12.5px; color: #949ba4;">Sincronize sua conta ao seu perfil do SyncCord</div>
+          </div>
+        </div>
+        <button type="button" onclick="closeConnectionSyncModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" data-i18n-title="common.close" title="Fechar">✕</button>
+      </div>
+
+      <input type="hidden" id="connection-modal-provider-input" value="" />
+
+      <!-- Quick 1-click Logged-in Account Sync Box (Especially for YouTube) -->
+      <div id="connection-logged-account-sync-box" style="display: none; padding: 12px 14px; border-radius: 8px; background: rgba(255, 0, 0, 0.1); border: 1px solid rgba(255, 75, 75, 0.35); margin-bottom: 16px;">
+        <div style="font-size: 12.5px; color: #f2f3f5; font-weight: 700; margin-bottom: 4px;" id="connection-logged-sync-title">Sincronização Rápida da Conta Logada</div>
+        <div style="font-size: 12px; color: #dbdee1; line-height: 1.4; margin-bottom: 10px;" id="connection-logged-sync-desc"></div>
+        <button type="button" class="btn-primary" id="btn-quick-sync-logged-account" onclick="submitQuickLoggedAccountSync()" style="width: 100%; background: #ff0033; font-weight: 700; padding: 10px 14px; border-radius: 6px; cursor: pointer;">
+          Sincronizar minha conta agora
+        </button>
+      </div>
+
+      <form id="connection-sync-form" onsubmit="submitConnectionSyncModal(event)" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="form-group">
+          <label id="connection-modal-field-label" class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 6px;">USUÁRIO, @HANDLE OU URL DO PERFIL</label>
+          <input type="text" class="form-input" id="connection-modal-handle-input" placeholder="@seu_canal ou usuario" style="background: #1e1f22; border-color: rgba(255,255,255,0.1); color: #f2f3f5;" required />
+          <div id="connection-modal-field-hint" style="font-size: 11.5px; color: #949ba4; margin-top: 6px; line-height: 1.4;"></div>
+        </div>
+
+        <div id="connection-modal-error" style="display: none; padding: 10px 12px; border-radius: 6px; background: rgba(242, 63, 67, 0.15); border: 1px solid #f23f43; color: #fa777c; font-size: 12.5px;"></div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; background: #2b2d31; margin: 8px -24px -24px -24px; padding: 14px 24px; border-radius: 0 0 10px 10px;">
+          <button type="button" class="btn-secondary" onclick="closeConnectionSyncModal()" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-primary" id="connection-modal-submit-btn" style="padding: 10px 20px; font-weight: 700;" data-i18n="connections.linkAccountBtn">Vincular Conta</button>
+        </div>
+      </form>
     </div>
   </div>
 
   <!-- AESTHETIC CONFIRMATION MODAL (Discord Confirmation Prompt) -->
   <div class="modal-overlay" id="confirm-action-modal">
     <div class="modal-content" style="max-width: 440px; padding: 24px; border-radius: 8px; background: #313338; box-shadow: 0 8px 32px rgba(0,0,0,0.6); text-align: left; gap: 0; position: relative;">
-      <div id="confirm-modal-title" style="font-size: 19px; font-weight: 700; color: #f2f3f5; margin-bottom: 10px;">
+      <div id="confirm-modal-title" style="font-size: 19px; font-weight: 700; color: #f2f3f5; margin-bottom: 10px;" data-i18n="common.areYouSure">
         Tem certeza disso?
       </div>
-      <div id="confirm-modal-message" style="font-size: 14px; color: #dbdee1; line-height: 1.5; margin-bottom: 24px;">
+      <div id="confirm-modal-message" style="font-size: 14px; color: #dbdee1; line-height: 1.5; margin-bottom: 24px;" data-i18n="common.confirmDefaultMsg">
         Você realmente deseja confirmar esta alteração?
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; background: #2b2d31; margin: 0 -24px -24px -24px; padding: 16px 24px; border-radius: 0 0 8px 8px;">
-        <button type="button" class="btn-secondary" id="confirm-modal-cancel-btn" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-secondary" id="confirm-modal-cancel-btn" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="common.cancel">
           Cancelar
         </button>
-        <button type="button" class="btn-primary" id="confirm-modal-confirm-btn" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-primary" id="confirm-modal-confirm-btn" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="common.confirm">
           Confirmar
         </button>
       </div>
@@ -1020,22 +1076,22 @@
   <!-- AESTHETIC EDIT USERNAME MODAL (Discord Style) -->
   <div class="modal-overlay" id="edit-username-modal">
     <div class="modal-content" style="max-width: 440px; padding: 24px; border-radius: 8px; background: #313338; box-shadow: 0 8px 32px rgba(0,0,0,0.6); text-align: left; gap: 0; position: relative;">
-      <div id="modal-edit-username-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin-bottom: 8px;">
+      <div id="modal-edit-username-title" style="font-size: 20px; font-weight: 700; color: #f2f3f5; margin-bottom: 8px;" data-i18n="editUsername.title">
         Alterar seu nome de usuário
       </div>
-      <div id="modal-edit-username-subtitle" style="font-size: 14px; color: #949ba4; line-height: 1.4; margin-bottom: 20px;">
+      <div id="modal-edit-username-subtitle" style="font-size: 14px; color: #949ba4; line-height: 1.4; margin-bottom: 20px;" data-i18n="editUsername.subtitle">
         Insira um novo nome de usuário para sua conta.
       </div>
       <div class="form-group" style="margin-bottom: 24px;">
-        <label id="modal-edit-username-label" class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 8px;">NOME DE USUÁRIO</label>
-        <input type="text" class="form-input" id="modal-new-username-input" placeholder="Insira o novo nome de usuário..." maxlength="32" style="background-color: #1e1f22; border-color: #1e1f22; font-size: 14px; color: #f2f3f5;" />
+        <label id="modal-edit-username-label" class="form-label" style="font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 8px;" data-i18n="editUsername.label">NOME DE USUÁRIO</label>
+        <input type="text" class="form-input" id="modal-new-username-input" data-i18n-placeholder="editUsername.placeholder" placeholder="Insira o novo nome de usuário..." maxlength="32" style="background-color: #1e1f22; border-color: #1e1f22; font-size: 14px; color: #f2f3f5;" />
         <div id="modal-edit-username-error" style="color: #fa777c; font-size: 12px; margin-top: 6px; display: none;"></div>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; background: #2b2d31; margin: 0 -24px -24px -24px; padding: 16px 24px; border-radius: 0 0 8px 8px;">
-        <button type="button" class="btn-secondary" id="modal-edit-username-cancel-btn" onclick="closeEditUsernameModal()" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-secondary" id="modal-edit-username-cancel-btn" onclick="closeEditUsernameModal()" style="padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="editUsername.cancel">
           Cancelar
         </button>
-        <button type="button" class="btn-primary" id="modal-edit-username-submit-btn" onclick="submitEditUsernameModal()" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;">
+        <button type="button" class="btn-primary" id="modal-edit-username-submit-btn" onclick="submitEditUsernameModal()" style="padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;" data-i18n="editUsername.done">
           Continuar
         </button>
       </div>
@@ -1065,7 +1121,7 @@
           <div class="settings-nav-item" data-tab="nitro" onclick="switchSettingsTab('nitro')">
             <span style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <span>Nitro</span>
-              <span class="settings-badge-nitro">NOVO</span>
+              <span class="settings-badge-nitro" data-i18n="settings.newBadge">NOVO</span>
             </span>
           </div>
           <div class="settings-nav-item" data-tab="server-boost" onclick="switchSettingsTab('server-boost')">Impulso de Servidor</div>
@@ -1119,7 +1175,7 @@
       <!-- Right Content Area -->
       <div class="settings-content-area">
         <!-- Close ESC Button -->
-        <div class="settings-close-container" onclick="closeUserSettingsModal()" title="Pressione ESC para fechar">
+        <div class="settings-close-container" onclick="closeUserSettingsModal()" data-i18n-title="settings.escToClose" title="Pressione ESC para fechar">
           <div class="settings-close-btn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path fill-rule="evenodd" clip-rule="evenodd" d="M18.4 4L12 10.4L5.6 4L4 5.6L10.4 12L4 18.4L5.6 20L12 13.6L18.4 20L20 18.4L13.6 12L20 5.6L18.4 4Z"/>

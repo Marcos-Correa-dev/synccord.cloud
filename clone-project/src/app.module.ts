@@ -9,6 +9,7 @@ import { MessagesModule } from '@modules/messages/messages.module';
 import { GatewayModule } from '@modules/gateway/gateway.module';
 import { RolesModule } from '@modules/roles/roles.module';
 import { VoiceModule } from '@modules/voice/voice.module';
+import { ConnectionsModule } from '@modules/connections/connections.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { VoiceModule } from '@modules/voice/voice.module';
     MessagesModule,
     RolesModule,
     VoiceModule,
+    ConnectionsModule,
     GatewayModule,
   ],
   controllers: [AppController],

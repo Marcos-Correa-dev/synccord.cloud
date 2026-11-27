@@ -151,12 +151,39 @@ export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
           PRIMARY KEY (channel_id, user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS user_connections (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider VARCHAR(32) NOT NULL,
+          provider_account_id VARCHAR(128) NOT NULL,
+          provider_username VARCHAR(128) NOT NULL,
+          profile_url TEXT,
+          avatar_url TEXT,
+          access_token TEXT,
+          refresh_token TEXT,
+          show_on_profile BOOLEAN NOT NULL DEFAULT TRUE,
+          metadata TEXT,
+          connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (user_id, provider)
+        );
+
+        CREATE TABLE IF NOT EXISTS user_authorized_apps (
+          id VARCHAR(32) PRIMARY KEY,
+          user_id VARCHAR(32) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          app_name VARCHAR(128) NOT NULL,
+          app_icon TEXT,
+          scopes TEXT NOT NULL DEFAULT 'identify',
+          authorized_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_roles_guild_id ON roles(guild_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_channel_id ON channel_overwrites(channel_id);
         CREATE INDEX IF NOT EXISTS idx_channel_overwrites_target_id ON channel_overwrites(target_id);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
         CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);
         CREATE INDEX IF NOT EXISTS idx_dm_participants_user_id ON dm_participants(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON user_connections(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_authorized_apps_user_id ON user_authorized_apps(user_id);
       `);
       this.logger.log('Database tables verified / initialized successfully');
     } catch (err: unknown) {

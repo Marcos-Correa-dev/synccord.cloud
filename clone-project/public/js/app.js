@@ -79,7 +79,626 @@
   }
   window.t = t;
 
+  // =========================================================================
+  // TEXT & IMAGES FLAGS STATE (PERSISTENT IN LOCALSTORAGE)
+  // =========================================================================
+  const DEFAULT_TEXT_IMAGES_SETTINGS = {
+    showImagesMedia: true,
+    convertEmoticons: true,
+    showLinkPreviews: true,
+  };
+  let textImagesSettings = { ...DEFAULT_TEXT_IMAGES_SETTINGS };
+  try {
+    const rawTi = JSON.parse(localStorage.getItem('synccord_text_images_settings') || 'null');
+    if (rawTi && typeof rawTi === 'object') {
+      textImagesSettings = {
+        showImagesMedia: rawTi.showImagesMedia !== false,
+        convertEmoticons: rawTi.convertEmoticons !== false,
+        showLinkPreviews: rawTi.showLinkPreviews !== false,
+      };
+    }
+  } catch {
+    textImagesSettings = { ...DEFAULT_TEXT_IMAGES_SETTINGS };
+  }
+
+  function saveTextImagesSettings() {
+    try {
+      localStorage.setItem('synccord_text_images_settings', JSON.stringify(textImagesSettings));
+    } catch {}
+  }
+
+  // Convert text emoticons like :), :D, <3, ;), :(, :P, B), XD into Unicode Emojis safely outside URLs
+  const EMOTICON_RULES = [
+    { pattern: /(^|\s)&lt;\/3(?=\s|$|[,.!?])/g, emoji: '$1💔' },
+    { pattern: /(^|\s)&lt;3(?=\s|$|[,.!?])/g, emoji: '$1❤️' },
+    { pattern: /(^|\s)&gt;:\((?=\s|$|[,.!?])/g, emoji: '$1😠' },
+    { pattern: /(^|\s)O:-?\)(?=\s|$|[,.!?])/gi, emoji: '$1😇' },
+    { pattern: /(^|\s):'\((?=\s|$|[,.!?])/g, emoji: '$1😢' },
+    { pattern: /(^|\s):-?D(?=\s|$|[,.!?])/g, emoji: '$1😄' },
+    { pattern: /(^|\s)(?:XD|xD)(?=\s|$|[,.!?])/g, emoji: '$1😆' },
+    { pattern: /(^|\s);-?P(?=\s|$|[,.!?])/gi, emoji: '$1😜' },
+    { pattern: /(^|\s):-?P(?=\s|$|[,.!?])/gi, emoji: '$1😛' },
+    { pattern: /(^|\s);-?\)(?=\s|$|[,.!?])/g, emoji: '$1😉' },
+    { pattern: /(^|\s)(?:B-?\)|8-\))(?=\s|$|[,.!?])/g, emoji: '$1😎' },
+    { pattern: /(^|\s):-?[oO](?=\s|$|[,.!?])/g, emoji: '$1😮' },
+    { pattern: /(^|\s):-?\*(?=\s|$|[,.!?])/g, emoji: '$1😘' },
+    { pattern: /(^|\s):-?\|(?=\s|$|[,.!?])/g, emoji: '$1😐' },
+    { pattern: /(^|\s):-?\/(?=\s|$|[,.!?])/g, emoji: '$1😕' },
+    { pattern: /(^|\s):-?\((?=\s|$|[,.!?])/g, emoji: '$1🙁' },
+    { pattern: /(^|\s):-?\)(?=\s|$|[,.!?])/g, emoji: '$1🙂' },
+    { pattern: /(^|\s)\^_\^(?=\s|$|[,.!?])/g, emoji: '$1😊' },
+    { pattern: /(^|\s)-_-(?=\s|$|[,.!?])/g, emoji: '$1😑' },
+  ];
+
+  const RAW_EMOTICON_RULES = [
+    { pattern: /(^|\s)<\/3(?=\s|$|[,.!?])/g, emoji: '$1💔' },
+    { pattern: /(^|\s)<3(?=\s|$|[,.!?])/g, emoji: '$1❤️' },
+    { pattern: /(^|\s)>:\((?=\s|$|[,.!?])/g, emoji: '$1😠' },
+    { pattern: /(^|\s)O:-?\)(?=\s|$|[,.!?])/gi, emoji: '$1😇' },
+    { pattern: /(^|\s):'\((?=\s|$|[,.!?])/g, emoji: '$1😢' },
+    { pattern: /(^|\s):-?D(?=\s|$|[,.!?])/g, emoji: '$1😄' },
+    { pattern: /(^|\s)(?:XD|xD)(?=\s|$|[,.!?])/g, emoji: '$1😆' },
+    { pattern: /(^|\s);-?P(?=\s|$|[,.!?])/gi, emoji: '$1😜' },
+    { pattern: /(^|\s):-?P(?=\s|$|[,.!?])/gi, emoji: '$1😛' },
+    { pattern: /(^|\s);-?\)(?=\s|$|[,.!?])/g, emoji: '$1😉' },
+    { pattern: /(^|\s)(?:B-?\)|8-\))(?=\s|$|[,.!?])/g, emoji: '$1😎' },
+    { pattern: /(^|\s):-?[oO](?=\s|$|[,.!?])/g, emoji: '$1😮' },
+    { pattern: /(^|\s):-?\*(?=\s|$|[,.!?])/g, emoji: '$1😘' },
+    { pattern: /(^|\s):-?\|(?=\s|$|[,.!?])/g, emoji: '$1😐' },
+    { pattern: /(^|\s):-?\/(?=\s|$|[,.!?])/g, emoji: '$1😕' },
+    { pattern: /(^|\s):-?\((?=\s|$|[,.!?])/g, emoji: '$1🙁' },
+    { pattern: /(^|\s):-?\)(?=\s|$|[,.!?])/g, emoji: '$1🙂' },
+    { pattern: /(^|\s)\^_\^(?=\s|$|[,.!?])/g, emoji: '$1😊' },
+    { pattern: /(^|\s)-_-(?=\s|$|[,.!?])/g, emoji: '$1😑' },
+  ];
+
+  function convertRawEmoticonsIfEnabled(rawText) {
+    if (!rawText || !textImagesSettings.convertEmoticons) return rawText;
+    const urlPlaceholders = [];
+    let safeText = rawText.replace(/(https?:\/\/[^\s<>"']+|data:image\/[^\s<>"']+)/gi, (match) => {
+      const idx = urlPlaceholders.length;
+      urlPlaceholders.push(match);
+      return `__SYNCCORD_URL_${idx}__`;
+    });
+    RAW_EMOTICON_RULES.forEach((rule) => {
+      safeText = safeText.replace(rule.pattern, rule.emoji);
+    });
+    return safeText.replace(/__SYNCCORD_URL_(\d+)__/g, (_m, idx) => urlPlaceholders[Number(idx)] || '');
+  }
+
+  // =========================================================================
+  // OFFICIAL REAL BRAND SVGS & CONNECTIONS / AUTHORIZED APPS STATE
+  // =========================================================================
+  const BRAND_PROVIDERS = {
+    youtube: {
+      id: 'youtube',
+      name: 'YouTube',
+      color: '#FF0000',
+      bg: '#FF0000',
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+    },
+    github: {
+      id: 'github',
+      name: 'GitHub',
+      color: '#f0f6fc',
+      bg: '#24292F',
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>',
+    },
+    spotify: {
+      id: 'spotify',
+      name: 'Spotify',
+      color: '#1DB954',
+      bg: '#1DB954',
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>',
+    },
+    steam: {
+      id: 'steam',
+      name: 'Steam',
+      color: '#66c0f4',
+      bg: '#171a21',
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>',
+    },
+    twitch: {
+      id: 'twitch',
+      name: 'Twitch',
+      color: '#9146FF',
+      bg: '#9146FF',
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>',
+    },
+  };
+
+  let userConnections = [];
+  let userAuthorizedApps = [];
+
+  async function loadUserConnections() {
+    if (!token) return [];
+    try {
+      const list = await api('/users/@me/connections');
+      if (Array.isArray(list)) {
+        userConnections = list;
+        renderPopoverConnections();
+      }
+    } catch {
+      // silently ignore when offline or unauthenticated
+    }
+    return userConnections;
+  }
+
+  async function loadAuthorizedApps() {
+    if (!token) return [];
+    try {
+      const list = await api('/users/@me/authorized-apps');
+      if (Array.isArray(list)) {
+        userAuthorizedApps = list;
+      }
+    } catch {
+      userAuthorizedApps = [];
+    }
+    return userAuthorizedApps;
+  }
+
+  function renderPopoverConnections() {
+    const container = document.getElementById('popover-connections-container');
+    const listEl = document.getElementById('popover-connections-list');
+    if (!container || !listEl) return;
+
+    const visible = (userConnections || []).filter(
+      (c) => c.showOnProfile !== false && BRAND_PROVIDERS[c.provider],
+    );
+    if (visible.length === 0) {
+      container.style.display = 'none';
+      listEl.innerHTML = '';
+      return;
+    }
+
+    container.style.display = 'block';
+    listEl.innerHTML = visible
+      .map((conn) => {
+        const brand = BRAND_PROVIDERS[conn.provider];
+        const href = conn.profileUrl ? escapeHtml(conn.profileUrl) : '#';
+        return `
+          <a href="${href}" target="_blank" rel="noopener noreferrer" class="popover-connection-chip" title="${escapeHtml(brand.name)}: ${escapeHtml(conn.providerUsername)}">
+            <span style="color: ${brand.color === '#f0f6fc' ? '#ffffff' : brand.color}; display: inline-flex;">${brand.svg}</span>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${escapeHtml(conn.providerUsername)}</span>
+            <span style="color: #23a55a; font-size: 10px;">✓</span>
+          </a>
+        `;
+      })
+      .join('');
+  }
+
+  // =========================================================================
+  // FLOATING EMOJI PICKER COMPONENT (MAIN CHAT & VOICE SIDEBAR CHAT)
+  // =========================================================================
+  const EMOJI_CATALOG = [
+    {
+      id: 'smileys',
+      icon: '😀',
+      titleKey: 'emoji.catSmileys',
+      items: [
+        ['😀', 'grinning feliz sorriso happy'], ['😃', 'smiley alegre happy'], ['😄', 'smile sorriso'], ['😁', 'grin radiante'],
+        ['😆', 'laughing xd risada'], ['😅', 'sweat_smile suor alivio'], ['🤣', 'rofl rindo muito lol'], ['😂', 'joy lagrimas riso'],
+        ['🙂', 'slightly_smiling leve sorriso'], ['😉', 'wink piscada'], ['😊', 'blush timido feliz'], ['😇', 'innocent anjo'],
+        ['🥰', 'smiling_hearts apaixonado amor'], ['😍', 'heart_eyes olhos coracao'], ['🤩', 'star_struck estrelas incrivel'], ['😘', 'kissing_heart beijo'],
+        ['😋', 'yum delicioso'], ['😛', 'stuck_out_tongue lingua'], ['😜', 'wink_tongue piscada lingua'], ['🤪', 'zany maluco'],
+        ['😎', 'sunglasses oculos descolado cool'], ['🤓', 'nerd oculos inteligente'], ['🧐', 'monocle monoculo'], ['🥳', 'partying festa comemorar'],
+        ['😏', 'smirk sorriso maroto'], ['😒', 'unamused tedio'], ['😞', 'disappointed triste'], ['😔', 'pensive pensativo'],
+        ['😟', 'worried preocupado'], ['😕', 'confused confuso'], ['🙁', 'frowning triste'], ['😣', 'persevere'],
+        ['😖', 'confounded'], ['😫', 'tired cansado'], ['😩', 'weary exausto'], ['🥺', 'pleading pidao fofo'],
+        ['😢', 'cry chorando lagrima'], ['😭', 'sob chorando muito'], ['😤', 'triumph bravo'], ['😠', 'angry irritado raiva'],
+        ['😡', 'rage furioso vermelho'], ['🤬', 'cursing xingando'], ['🤯', 'exploding_head mente explodindo'], ['😳', 'flushed vergonha'],
+        ['🥵', 'hot_face calor'], ['🥶', 'cold_face frio'], ['😱', 'scream susto medo'], ['😨', 'fearful medo'],
+        ['🤔', 'thinking pensando hmm'], ['🫡', 'saluting continencia respeito'], ['🤫', 'shushing silencio shh'], ['🫠', 'melting derretendo'],
+        ['😴', 'sleeping dormindo sono zzz'], ['🤤', 'drooling babando'], ['🤮', 'vomiting vomito'], ['🤧', 'sneezing espirro'],
+        ['😷', 'mask mascara'], ['🤠', 'cowboy vaqueiro'], ['🤡', 'clown palhaco'], ['👻', 'ghost fantasma'],
+        ['💀', 'skull caveira morto'], ['👽', 'alien et'], ['🤖', 'robot robo bot'], ['🎃', 'jack_o_lantern halloween'],
+      ],
+    },
+    {
+      id: 'gestures',
+      icon: '👋',
+      titleKey: 'emoji.catGestures',
+      items: [
+        ['👋', 'wave tchau oi ola hello'], ['🤚', 'raised_back_of_hand mao'], ['✋', 'hand pare high five'], ['🖖', 'vulcan spock'],
+        ['👌', 'ok_hand ok perfeito'], ['🤌', 'pinched_fingers italiano'], ['✌️', 'v paz vitoria peace'], ['🤞', 'crossed_fingers sorte'],
+        ['🫰', 'hand_with_index_and_thumb_crossed coracao coreano'], ['🤟', 'love_you_gesture rock amor'], ['🤘', 'metal rock'], ['🤙', 'call_me hang loose'],
+        ['👍', 'thumbsup joinha like sim ok'], ['👎', 'thumbsdown dislike nao'], ['✊', 'fist punho forca'], ['👊', 'punch soco brofist'],
+        ['🤛', 'left_fist'], ['🤜', 'right_fist'], ['👏', 'clap palmas aplausos bravo'], ['🙌', 'raised_hands viva aleluia'],
+        ['🫶', 'heart_hands maos coracao amor'], ['👐', 'open_hands'], ['🤲', 'palms_up'], ['🤝', 'handshake aperto acordo parceria'],
+        ['🙏', 'pray obrigado por favor amem thanks'], ['✍️', 'writing escrevendo'], ['💪', 'muscle forte academia forca'], ['🦾', 'mechanical_arm'],
+        ['👀', 'eyes olhos olhando vendo'], ['🧠', 'brain cerebro genio'], ['👑', 'crown coroa rei rainha king'], ['🥷', 'ninja furtivo'],
+      ],
+    },
+    {
+      id: 'hearts',
+      icon: '❤️',
+      titleKey: 'emoji.catHearts',
+      items: [
+        ['❤️', 'red_heart coracao vermelho amor love'], ['🧡', 'orange_heart laranja'], ['💛', 'yellow_heart amarelo'], ['💚', 'green_heart verde'],
+        ['💙', 'blue_heart azul'], ['💜', 'purple_heart roxo lilas synccord'], ['🖤', 'black_heart preto'], ['🤍', 'white_heart branco'],
+        ['🤎', 'brown_heart'], ['💔', 'broken_heart partido'], ['❤️‍🔥', 'heart_on_fire paixao fogo'], ['💕', 'two_hearts dois coracoes'],
+        ['💞', 'revolving_hearts'], ['💓', 'heartbeat batendo'], ['💗', 'growing_heart'], ['💖', 'sparkling_heart brilhante'],
+        ['💘', 'cupid flecha'], ['💝', 'gift_heart presente'], ['🔥', 'fire fogo quente top hype'], ['✨', 'sparkles brilho magia novo'],
+        ['🌟', 'star2 estrela brilhante'], ['⭐', 'star estrela'], ['⚡', 'zap raio rapido energia'], ['💥', 'boom explosao impacto'],
+        ['💯', '100 cem perfeito'], ['💢', 'anger'], ['💨', 'dash rapido'], ['💫', 'dizzy'],
+        ['💬', 'speech_balloon balao chat'], ['🎉', 'tada festa parabens confete party'], ['🎊', 'confetti_ball comemoracao'], ['✅', 'white_check_mark check certo sim'],
+        ['❌', 'x erro nao cancelar'], ['⚠️', 'warning aviso alerta'], ['🚀', 'rocket foguete lancamento deploy'], ['💎', 'gem diamante nitro vip'],
+      ],
+    },
+    {
+      id: 'animals',
+      icon: '🐱',
+      titleKey: 'emoji.catAnimals',
+      items: [
+        ['🐶', 'dog cachorro cao'], ['🐱', 'cat gato gatinho'], ['🐭', 'mouse rato'], ['🐹', 'hamster'],
+        ['🐰', 'rabbit coelho'], ['🦊', 'fox raposa'], ['🐻', 'bear urso'], ['🐼', 'panda'],
+        ['🐨', 'koala'], ['🐯', 'tiger tigre'], ['🦁', 'lion leao'], ['🐮', 'cow vaca'],
+        ['🐷', 'pig porco'], ['🐸', 'frog sapo pepe'], ['🐵', 'monkey macaco'], ['🙈', 'see_no_evil macaco olhos'],
+        ['🙉', 'hear_no_evil'], ['🙊', 'speak_no_evil'], ['🐧', 'penguin pinguim linux'], ['🐦', 'bird passaro'],
+        ['🦅', 'eagle aguia'], ['🦉', 'owl coruja'], ['🦇', 'bat morcego'], ['🐺', 'wolf lobo'],
+        ['🦄', 'unicorn unicornio'], ['🐝', 'bee abelha'], ['🦋', 'butterfly borboleta'], ['🐢', 'turtle tartaruga'],
+        ['🐍', 'snake cobra python'], ['🦖', 't_rex dinossauro'], ['🐙', 'octopus polvo github'], ['🦈', 'shark tubarao'],
+        ['🌸', 'cherry_blossom flor cerejeira'], ['🌹', 'rose rosa'], ['🌻', 'sunflower girassol'], ['🍀', 'four_leaf_clover trevo sorte'],
+        ['🌈', 'rainbow arco iris'], ['☀️', 'sunny sol'], ['🌙', 'crescent_moon lua'], ['🌊', 'ocean onda mar'],
+      ],
+    },
+    {
+      id: 'food',
+      icon: '🍕',
+      titleKey: 'emoji.catFood',
+      items: [
+        ['🍎', 'apple maca'], ['🍓', 'strawberry morango'], ['🍌', 'banana'], ['🍉', 'watermelon melancia'],
+        ['🍇', 'grapes uva'], ['🥑', 'avocado abacate'], ['🍔', 'hamburger hamburguer lanche'], ['🍟', 'fries batata frita'],
+        ['🍕', 'pizza'], ['🌭', 'hotdog cachorro quente'], ['🌮', 'taco'], ['🌯', 'burrito'],
+        ['🍣', 'sushi japones'], ['🍜', 'ramen miojo lamen'], ['🍝', 'spaghetti macarrao'], ['🍗', 'poultry_leg frango'],
+        ['🥩', 'cut_of_meat carne churrasco'], ['🍿', 'popcorn pipoca cinema'], ['🍩', 'doughnut rosquinha donut'], ['🍪', 'cookie biscoito'],
+        ['🎂', 'birthday bolo aniversario'], ['🍰', 'cake fatia bolo'], ['🍫', 'chocolate'], ['🍦', 'icecream sorvete'],
+        ['☕', 'coffee cafe dev codigo'], ['🍵', 'tea cha'], ['🥤', 'cup_with_straw refrigerante suco'], ['🍺', 'beer cerveja chopp'],
+        ['🍻', 'beers brinde cervejas'], ['🍷', 'wine_glass vinho'], ['🥂', 'clinking_glasses champanhe brinde'], ['🧃', 'beverage_box suquinho'],
+      ],
+    },
+    {
+      id: 'activities',
+      icon: '🎮',
+      titleKey: 'emoji.catActivities',
+      items: [
+        ['🎮', 'video_game controle jogo gamer steam'], ['🕹️', 'joystick arcade'], ['🎲', 'game_die dado rpg'], ['🎯', 'dart alvo certeiro'],
+        ['🏆', 'trophy trofeu campeao vitoria'], ['🥇', 'first_place ouro primeiro'], ['🥈', 'second_place prata'], ['🥉', 'third_place bronze'],
+        ['⚽', 'soccer futebol bola gol'], ['🏀', 'basketball basquete'], ['🏈', 'football'], ['🎾', 'tennis tenis'],
+        ['🏐', 'volleyball volei'], ['🎱', '8ball sinuca'], ['🎸', 'guitar guitarra rock musica'], ['🎹', 'musical_keyboard piano teclado'],
+        ['🎧', 'headphones fone musica audio'], ['🎤', 'microphone microfone voz cantar'], ['🎬', 'clapper cinema video filme'], ['🎨', 'art paleta arte design'],
+        ['🎵', 'musical_note nota musica spotify'], ['🎶', 'notes musica'], ['📺', 'tv televisao youtube twitch'], ['📸', 'camera foto'],
+      ],
+    },
+    {
+      id: 'objects',
+      icon: '💻',
+      titleKey: 'emoji.catObjects',
+      items: [
+        ['💻', 'computer notebook pc dev codigo'], ['🖥️', 'desktop_computer monitor pc'], ['⌨️', 'keyboard teclado'], ['🖱️', 'computer_mouse mouse'],
+        ['📱', 'iphone celular smartphone'], ['🔋', 'battery bateria'], ['🔌', 'electric_plug tomada'], ['💾', 'floppy_disk salvar disquete'],
+        ['💿', 'cd disco'], ['📡', 'satellite antena rede'], ['💡', 'bulb ideia luz dica'], ['🔦', 'flashlight lanterna'],
+        ['🔧', 'wrench chave ferramenta config'], ['🔨', 'hammer martelo build'], ['⚙️', 'gear engrenagem config settings'], ['🛡️', 'shield escudo seguranca admin'],
+        ['🔑', 'key chave token senha'], ['🔒', 'lock cadeado fechado privado'], ['🔓', 'unlock aberto'], ['🔔', 'bell sino notificacao'],
+        ['🔕', 'no_bell mudo silenciado'], ['📢', 'loudspeaker aviso anuncio'], ['📌', 'pushpin fixado pin'], ['📎', 'paperclip anexo'],
+        ['📝', 'memo nota escrever editar'], ['📁', 'file_folder pasta'], ['🗑️', 'wastebasket lixeira excluir'], ['🎁', 'gift presente nitro'],
+      ],
+    },
+  ];
+
+  let activeEmojiPickerEl = null;
+  let activeEmojiTargetInput = null;
+  let activeEmojiTriggerBtn = null;
+  let activeEmojiCategory = 'smileys';
+
+  function getRecentEmojis() {
+    try {
+      const arr = JSON.parse(localStorage.getItem('synccord_recent_emojis') || '[]');
+      return Array.isArray(arr) ? arr.slice(0, 16) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function pushRecentEmoji(emojiChar) {
+    const recents = getRecentEmojis().filter((c) => c !== emojiChar);
+    recents.unshift(emojiChar);
+    try {
+      localStorage.setItem('synccord_recent_emojis', JSON.stringify(recents.slice(0, 16)));
+    } catch {}
+  }
+
+  function closeEmojiPicker() {
+    if (activeEmojiPickerEl) {
+      activeEmojiPickerEl.remove();
+      activeEmojiPickerEl = null;
+    }
+    if (activeEmojiTriggerBtn) {
+      activeEmojiTriggerBtn.classList.remove('active');
+      activeEmojiTriggerBtn = null;
+    }
+    activeEmojiTargetInput = null;
+    document.removeEventListener('mousedown', handleOutsideEmojiPickerClick);
+  }
+
+  function handleOutsideEmojiPickerClick(e) {
+    if (!activeEmojiPickerEl) return;
+    if (activeEmojiPickerEl.contains(e.target)) return;
+    if (activeEmojiTriggerBtn && activeEmojiTriggerBtn.contains(e.target)) return;
+    closeEmojiPicker();
+  }
+
+  function insertEmojiIntoInput(inputEl, emojiChar) {
+    if (!inputEl) return;
+    const start = typeof inputEl.selectionStart === 'number' ? inputEl.selectionStart : inputEl.value.length;
+    const end = typeof inputEl.selectionEnd === 'number' ? inputEl.selectionEnd : inputEl.value.length;
+    const before = inputEl.value.substring(0, start);
+    const after = inputEl.value.substring(end);
+    inputEl.value = `${before}${emojiChar}${after}`;
+    const nextPos = start + emojiChar.length;
+    inputEl.focus();
+    try {
+      inputEl.setSelectionRange(nextPos, nextPos);
+    } catch {}
+    pushRecentEmoji(emojiChar);
+  }
+
+  function toggleEmojiPicker(targetInputEl, triggerBtn) {
+    if (!targetInputEl || !triggerBtn) return;
+    if (activeEmojiPickerEl && activeEmojiTriggerBtn === triggerBtn) {
+      closeEmojiPicker();
+      return;
+    }
+    closeEmojiPicker();
+
+    activeEmojiTargetInput = targetInputEl;
+    activeEmojiTriggerBtn = triggerBtn;
+    triggerBtn.classList.add('active');
+
+    const pop = document.createElement('div');
+    pop.className = 'emoji-picker-popover';
+    pop.id = 'synccord-emoji-picker';
+
+    const recents = getRecentEmojis();
+    const catButtonsHtml = [
+      ...(recents.length > 0 ? [`<button type="button" class="emoji-cat-btn ${activeEmojiCategory === 'recent' ? 'active' : ''}" data-cat="recent" title="${escapeHtml(t('emoji.catRecent'))}">🕒</button>`] : []),
+      ...EMOJI_CATALOG.map(
+        (cat) => `<button type="button" class="emoji-cat-btn ${activeEmojiCategory === cat.id ? 'active' : ''}" data-cat="${cat.id}" title="${escapeHtml(t(cat.titleKey))}">${cat.icon}</button>`,
+      ),
+    ].join('');
+
+    pop.innerHTML = `
+      <div class="emoji-picker-header">
+        <input type="text" class="emoji-picker-search" id="emoji-picker-search-input" placeholder="${escapeHtml(t('emoji.searchPlaceholder'))}" autocomplete="off" />
+        <div class="emoji-picker-cats">${catButtonsHtml}</div>
+      </div>
+      <div class="emoji-picker-body" id="emoji-picker-body"></div>
+      <div class="emoji-picker-footer" id="emoji-picker-footer">
+        <span class="emoji-picker-footer-char">🙂</span>
+        <span id="emoji-picker-footer-label">${escapeHtml(t('emoji.pickHint'))}</span>
+      </div>
+    `;
+
+    document.body.appendChild(pop);
+    activeEmojiPickerEl = pop;
+
+    // Position anchored cleanly above the trigger button
+    const rect = triggerBtn.getBoundingClientRect();
+    const pickerW = 352;
+    const pickerH = 410;
+    let left = rect.right - pickerW;
+    let top = rect.top - pickerH - 10;
+    if (left < 12) left = 12;
+    if (left + pickerW > window.innerWidth - 12) left = window.innerWidth - pickerW - 12;
+    if (top < 12) top = rect.bottom + 8;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+
+    const bodyEl = pop.querySelector('#emoji-picker-body');
+    const searchInput = pop.querySelector('#emoji-picker-search-input');
+    const footerChar = pop.querySelector('.emoji-picker-footer-char');
+    const footerLabel = pop.querySelector('#emoji-picker-footer-label');
+
+    function renderGrid(query = '') {
+      const q = query.trim().toLowerCase();
+      bodyEl.innerHTML = '';
+
+      if (q) {
+        const matches = [];
+        EMOJI_CATALOG.forEach((cat) => {
+          cat.items.forEach(([ch, keywords]) => {
+            if (keywords.toLowerCase().includes(q) || ch.includes(q)) {
+              matches.push([ch, keywords.split(' ')[0]]);
+            }
+          });
+        });
+
+        if (matches.length === 0) {
+          bodyEl.innerHTML = `<div style="padding: 28px 12px; text-align: center; color: #949ba4; font-size: 13px;">${escapeHtml(t('emoji.noResults'))}</div>`;
+          return;
+        }
+
+        const title = document.createElement('div');
+        title.className = 'emoji-picker-cat-title';
+        title.textContent = t('emoji.searchResults');
+        bodyEl.appendChild(title);
+
+        const grid = document.createElement('div');
+        grid.className = 'emoji-picker-grid';
+        matches.forEach(([ch, name]) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'emoji-picker-item';
+          btn.textContent = ch;
+          btn.onmouseenter = () => {
+            footerChar.textContent = ch;
+            footerLabel.textContent = `:${name}:`;
+          };
+          btn.onclick = (ev) => {
+            ev.stopPropagation();
+            insertEmojiIntoInput(activeEmojiTargetInput, ch);
+            if (!ev.shiftKey) closeEmojiPicker();
+          };
+          grid.appendChild(btn);
+        });
+        bodyEl.appendChild(grid);
+        return;
+      }
+
+      const currentRecents = getRecentEmojis();
+      if (currentRecents.length > 0) {
+        const rTitle = document.createElement('div');
+        rTitle.className = 'emoji-picker-cat-title';
+        rTitle.id = 'emoji-sec-recent';
+        rTitle.textContent = t('emoji.catRecent');
+        bodyEl.appendChild(rTitle);
+
+        const rGrid = document.createElement('div');
+        rGrid.className = 'emoji-picker-grid';
+        currentRecents.forEach((ch) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'emoji-picker-item';
+          btn.textContent = ch;
+          btn.onmouseenter = () => {
+            footerChar.textContent = ch;
+            footerLabel.textContent = t('emoji.catRecent');
+          };
+          btn.onclick = (ev) => {
+            ev.stopPropagation();
+            insertEmojiIntoInput(activeEmojiTargetInput, ch);
+            if (!ev.shiftKey) closeEmojiPicker();
+          };
+          rGrid.appendChild(btn);
+        });
+        bodyEl.appendChild(rGrid);
+      }
+
+      EMOJI_CATALOG.forEach((cat) => {
+        const cTitle = document.createElement('div');
+        cTitle.className = 'emoji-picker-cat-title';
+        cTitle.id = `emoji-sec-${cat.id}`;
+        cTitle.textContent = t(cat.titleKey);
+        bodyEl.appendChild(cTitle);
+
+        const cGrid = document.createElement('div');
+        cGrid.className = 'emoji-picker-grid';
+        cat.items.forEach(([ch, keywords]) => {
+          const shortCode = keywords.split(' ')[0];
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'emoji-picker-item';
+          btn.textContent = ch;
+          btn.onmouseenter = () => {
+            footerChar.textContent = ch;
+            footerLabel.textContent = `:${shortCode}:`;
+          };
+          btn.onclick = (ev) => {
+            ev.stopPropagation();
+            insertEmojiIntoInput(activeEmojiTargetInput, ch);
+            if (!ev.shiftKey) closeEmojiPicker();
+          };
+          cGrid.appendChild(btn);
+        });
+        bodyEl.appendChild(cGrid);
+      });
+    }
+
+    renderGrid('');
+
+    searchInput.addEventListener('input', (e) => {
+      renderGrid(e.target.value);
+    });
+
+    pop.querySelectorAll('.emoji-cat-btn').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const catId = btn.getAttribute('data-cat');
+        activeEmojiCategory = catId;
+        pop.querySelectorAll('.emoji-cat-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        if (searchInput.value) {
+          searchInput.value = '';
+          renderGrid('');
+        }
+        const sec = pop.querySelector(`#emoji-sec-${catId}`);
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    setTimeout(() => {
+      searchInput.focus();
+      document.addEventListener('mousedown', handleOutsideEmojiPickerClick);
+    }, 10);
+  }
+  window.toggleEmojiPicker = toggleEmojiPicker;
+
+  function renderSoundboardItems() {
+    const soundsGrid = document.getElementById('soundboard-sounds-grid');
+    const reactionsRow = document.getElementById('soundboard-reactions-row');
+    if (soundsGrid) {
+      const sounds = [
+        { key: 'airhorn', emoji: '📯', label: t('voice.soundAirhorn') },
+        { key: 'join', emoji: '✨', label: t('voice.soundChime') },
+        { key: 'ping', emoji: '🔔', label: t('voice.soundPing') },
+        { key: 'leave', emoji: '👋', label: t('voice.soundBye') },
+      ];
+      soundsGrid.innerHTML = sounds
+        .map(
+          (s) => `
+          <button type="button" class="soundboard-btn" onclick="playSound('${s.key}', '${s.emoji}', '${escapeHtml(s.label)}')">
+            <span>${s.emoji}</span>
+            <span>${escapeHtml(s.label)}</span>
+          </button>
+        `,
+        )
+        .join('');
+    }
+    if (reactionsRow) {
+      const emojis = ['👍', '❤️', '😂', '🔥', '🎉', '👏'];
+      reactionsRow.innerHTML = `
+        <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">${escapeHtml(t('voice.reactionsLabel'))}</span>
+        ${emojis
+          .map(
+            (em) => `<button type="button" class="reaction-quick-btn" style="background: transparent; border: none; font-size: 18px; cursor: pointer;" onclick="sendReaction('${em}')">${em}</button>`,
+          )
+          .join('')}
+      `;
+    }
+  }
+
   function applyTranslationsToUI() {
+    document.documentElement.lang = currentLocale || 'pt-BR';
+
+    // 0. Generic declarative attributes across index.html
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      const val = t(key);
+      if (val && val !== key) {
+        el.textContent = val;
+      }
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-html');
+      const val = t(key);
+      if (val && val !== key) {
+        el.innerHTML = val;
+      }
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      const val = t(key);
+      if (val && val !== key) {
+        el.setAttribute('placeholder', val);
+      }
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-title');
+      const val = t(key);
+      if (val && val !== key) {
+        el.setAttribute('title', val);
+      }
+    });
+
     // 1. User Settings Sidebar Section Headers
     const headers = document.querySelectorAll('.settings-nav-header');
     if (headers.length >= 4) {
@@ -130,91 +749,70 @@
     const logoutEl = document.querySelector('.settings-nav-item.logout-nav-item span span');
     if (logoutEl) logoutEl.textContent = t('settings.logout');
 
-    // 3. Mini Profile Popover Quick Action Items
-    const popoverActions = document.querySelectorAll('.popover-action-item');
-    if (popoverActions.length >= 3) {
-      const editProfileSpan = popoverActions[0].querySelector('span');
-      if (editProfileSpan) editProfileSpan.textContent = t('profile.editProfile');
-      const myAccountSpan = popoverActions[1].querySelector('span');
-      if (myAccountSpan) myAccountSpan.textContent = t('profile.myAccount');
-      const logoutSpan = popoverActions[2].querySelector('span');
-      if (logoutSpan) logoutSpan.textContent = t('common.logout');
-    }
-
-    // 4. Chat input placeholder
+    // 3. Chat input placeholder
     if (chatInputEl) {
-      chatInputEl.placeholder = t('chat.placeholder', {
-        channel: currentChannel ? currentChannel.name : 'geral',
-      });
+      if (currentChannel && currentChannel.type === 1) {
+        chatInputEl.placeholder = t('dm.chatPlaceholder', { user: currentChannel.name });
+      } else if (currentChannel && currentChannel.type === 2) {
+        chatInputEl.placeholder = t('chat.voicePlaceholder', { channel: currentChannel.name });
+      } else {
+        chatInputEl.placeholder = t('chat.placeholder', {
+          channel: currentChannel ? currentChannel.name : 'geral',
+        });
+      }
     }
-
-    // 5. User Popover labels
-    const popoverStatusLabel = document.querySelector('.popover-section-label');
-    if (popoverStatusLabel) popoverStatusLabel.textContent = t('status.title');
 
     const popoverCustomStatus = document.getElementById('popover-status-text');
     if (popoverCustomStatus && (!currentUser || !currentUser.bio)) {
       popoverCustomStatus.textContent = t('profile.customStatus');
     }
 
-    // 6. Update online status option titles & durations
-    const onlineTitle = document.querySelector('.status-menu-item:first-child .status-title');
-    if (onlineTitle) onlineTitle.textContent = t('status.online');
-    const onlineDesc = document.querySelector('.status-menu-item:first-child .status-desc');
-    if (onlineDesc) onlineDesc.textContent = t('status.onlineDesc');
+    // 4. Refresh Auth Submit button text according to active tab
+    const loginTabEl = document.getElementById('auth-tab-login');
+    const authSubmitBtn = document.getElementById('auth-submit-btn');
+    if (loginTabEl && authSubmitBtn) {
+      const isLogin = loginTabEl.classList.contains('active');
+      authSubmitBtn.innerHTML = isLogin
+        ? `<i class="fa-solid fa-arrow-right-to-bracket"></i> ${escapeHtml(t('auth.loginTab'))}`
+        : `<i class="fa-solid fa-envelope-circle-check"></i> ${escapeHtml(t('auth.sendConfirmLinkBtn'))}`;
+    }
 
-    const dndTitle = document.querySelector('#status-item-dnd .status-title');
-    if (dndTitle) dndTitle.textContent = t('status.dnd');
-    const dndDesc = document.querySelector('#status-item-dnd .status-desc');
-    if (dndDesc) dndDesc.textContent = t('status.dndDesc');
+    // 5. Re-render dynamic panels if user is logged in
+    renderSoundboardItems();
+    if (typeof updateAudioButtons === 'function') updateAudioButtons();
+    if (typeof updateVoiceChatBanner === 'function') updateVoiceChatBanner();
 
-    const idleTitle = document.getElementById('status-item-idle')?.querySelector('.status-title');
-    if (idleTitle) idleTitle.textContent = t('status.idle');
-    const idleDesc = document.getElementById('status-item-idle')?.querySelector('.status-desc');
-    if (idleDesc) idleDesc.textContent = t('status.idleDesc');
-
-    const invTitle = document.getElementById('status-item-invisible')?.querySelector('.status-title');
-    if (invTitle) invTitle.textContent = t('status.invisible');
-    const invDesc = document.getElementById('status-item-invisible')?.querySelector('.status-desc');
-    if (invDesc) invDesc.textContent = t('status.invisibleDesc');
-
-    document.querySelectorAll('.status-duration-submenu').forEach((submenu) => {
-      const header = submenu.querySelector('.submenu-header');
-      if (header) header.textContent = t('status.durationHeader');
-      const options = submenu.querySelectorAll('.duration-option');
-      if (options.length >= 6) {
-        options[0].textContent = t('status.duration15m');
-        options[1].textContent = t('status.duration30m');
-        options[2].textContent = t('status.duration1h');
-        options[3].textContent = t('status.duration8h');
-        options[4].textContent = t('status.duration24h');
-        options[5].textContent = t('status.durationForever');
+    if (token && currentUser) {
+      if (currentGuild) {
+        renderMembersList();
+        api(`/guilds/${currentGuild.id}/channels`)
+          .then((chs) => {
+            if (currentGuild) {
+              const onlyRender = chs || [];
+              // Update category titles in place without re-selecting channel
+              const catSpans = channelListEl ? channelListEl.querySelectorAll('.category-header-label > span:last-child') : [];
+              if (catSpans[0]) catSpans[0].textContent = t('channels.textChannels');
+              if (catSpans[1]) catSpans[1].textContent = t('channels.voiceChannels');
+              if (onlyRender.length >= 0) renderVoiceUsers();
+            }
+          })
+          .catch(() => {});
+      } else if (serverNameEl) {
+        serverNameEl.textContent = t('dm.directMessagesTitle');
+        renderDirectMessagesSidebar();
+        renderDirectMessagesRightContacts();
+        if (!currentChannel || currentChannel.type !== 1) {
+          renderFriendsCentralStage();
+        }
       }
-    });
+    }
 
-    // 7. Update Edit Username Modal texts
-    const editModalTitle = document.getElementById('modal-edit-username-title');
-    if (editModalTitle) editModalTitle.textContent = t('editUsername.title');
-    const editModalSubtitle = document.getElementById('modal-edit-username-subtitle');
-    if (editModalSubtitle) editModalSubtitle.textContent = t('editUsername.subtitle');
-    const editModalLabel = document.getElementById('modal-edit-username-label');
-    if (editModalLabel) editModalLabel.textContent = t('editUsername.label');
-    const editModalInput = document.getElementById('modal-new-username-input');
-    if (editModalInput) editModalInput.placeholder = t('editUsername.placeholder');
-    const editModalCancelBtn = document.getElementById('modal-edit-username-cancel-btn');
-    if (editModalCancelBtn) editModalCancelBtn.textContent = t('editUsername.cancel');
-    const editModalDoneBtn = document.getElementById('modal-edit-username-confirm-btn') || document.getElementById('modal-edit-username-submit-btn');
-    if (editModalDoneBtn) editModalDoneBtn.textContent = t('editUsername.done');
-
-    // 8. If Settings modal is currently open, refresh the active tab immediately
+    // 6. If Settings modal is currently open, refresh the active tab immediately & re-bind interactive handlers
     const settingsModal = document.getElementById('user-settings-modal');
     if (settingsModal && settingsModal.style.display !== 'none') {
       const activeTabEl = document.querySelector('.settings-nav-item.active');
       const activeTab = activeTabEl ? activeTabEl.getAttribute('data-tab') : 'my-account';
-      const pane = document.getElementById('settings-tab-pane');
-      if (pane && activeTab) {
-        pane.innerHTML = renderSettingsTabContent(activeTab);
-      }
+      switchSettingsTab(activeTab);
     }
   }
 
@@ -519,13 +1117,13 @@
         </div>
         <div class="context-menu-user-info">
           <span class="context-menu-username">${escapeHtml(displayName)}</span>
-          <span class="context-menu-tag">${isMe ? '(Você)' : `#${escapeHtml(displayDisc)}`}</span>
+          <span class="context-menu-tag">${isMe ? escapeHtml(t('contextMenu.youTag')) : `#${escapeHtml(displayDisc)}`}</span>
         </div>
       </div>
 
       <div class="context-volume-section">
         <div class="context-volume-title-row">
-          <span class="context-volume-label">VOLUME DE USUÁRIO</span>
+          <span class="context-volume-label">${escapeHtml(t('contextMenu.userVolume'))}</span>
           <span class="context-volume-value ${currentVol === 0 ? 'muted' : (currentVol > 100 ? 'boosted' : '')}" id="context-user-volume-val">${currentVol}%</span>
         </div>
         
@@ -543,9 +1141,9 @@
         </div>
 
         <div class="context-volume-presets">
-          <button type="button" class="context-preset-btn" data-preset="0">0% (Mudo)</button>
-          <button type="button" class="context-preset-btn" data-preset="100">100% (Padrão)</button>
-          <button type="button" class="context-preset-btn" data-preset="200">200% (Máx)</button>
+          <button type="button" class="context-preset-btn" data-preset="0">${escapeHtml(t('contextMenu.presetMute'))}</button>
+          <button type="button" class="context-preset-btn" data-preset="100">${escapeHtml(t('contextMenu.presetDefault'))}</button>
+          <button type="button" class="context-preset-btn" data-preset="200">${escapeHtml(t('contextMenu.presetMax'))}</button>
         </div>
       </div>
 
@@ -554,19 +1152,19 @@
       <div class="context-menu-item" id="context-toggle-mute-user">
         <span style="display:flex;align-items:center;gap:8px;">
           <span id="context-mute-icon">${currentVol === 0 ? '🔊' : '🔇'}</span>
-          <span id="context-mute-text">${currentVol === 0 ? 'Desativar Mudo' : 'Silenciar Usuário'}</span>
+          <span id="context-mute-text">${escapeHtml(currentVol === 0 ? t('contextMenu.unmuteUser') : t('contextMenu.muteUser'))}</span>
         </span>
-        <span style="font-size:11px;color:var(--text-muted);" id="context-mute-badge">${currentVol === 0 ? 'MUDO' : ''}</span>
+        <span style="font-size:11px;color:var(--text-muted);" id="context-mute-badge">${currentVol === 0 ? escapeHtml(t('contextMenu.mutedBadge')) : ''}</span>
       </div>
 
       <div class="context-menu-divider"></div>
 
       <div class="context-menu-item" id="context-copy-username">
-        <span>Copiar Nome</span>
+        <span>${escapeHtml(t('contextMenu.copyName'))}</span>
         <span style="font-size:11px;color:var(--text-muted);">@</span>
       </div>
       <div class="context-menu-item" id="context-copy-id">
-        <span>Copiar ID</span>
+        <span>${escapeHtml(t('contextMenu.copyId'))}</span>
         <span style="font-size:11px;color:var(--text-muted);">#</span>
       </div>
     `;
@@ -589,11 +1187,11 @@
 
       if (vol === 0) {
         muteIconEl.textContent = '🔊';
-        muteTextEl.textContent = 'Desativar Mudo';
-        muteBadgeEl.textContent = 'MUDO';
+        muteTextEl.textContent = t('contextMenu.unmuteUser');
+        muteBadgeEl.textContent = t('contextMenu.mutedBadge');
       } else {
         muteIconEl.textContent = '🔇';
-        muteTextEl.textContent = 'Silenciar Usuário';
+        muteTextEl.textContent = t('contextMenu.muteUser');
         muteBadgeEl.textContent = '';
       }
     }
@@ -823,8 +1421,10 @@
           }
         });
 
-      // Synchronize latest user profile (username, avatar, etc.) directly from PostgreSQL backend
+      // Synchronize latest user profile (username, avatar, etc.) & connections directly from PostgreSQL backend
       if (token) {
+        loadUserConnections();
+        loadAuthorizedApps();
         api('/auth/me')
           .then((freshUser) => {
             if (freshUser && freshUser.id) {
@@ -1274,7 +1874,7 @@
     // 1. System Admin (Requested by user)
     const adminCategory = document.createElement('div');
     adminCategory.className = 'member-category';
-    adminCategory.textContent = 'ADMINISTRADORES — 1';
+    adminCategory.textContent = `${t('members.adminsCategory')} — 1`;
     container.appendChild(adminCategory);
 
     const adminItem = document.createElement('div');
@@ -1339,10 +1939,10 @@
     });
 
     const categoryConfigs = [
-      { key: 'online', label: 'DISPONÍVEL', dotClass: 'online', title: 'Disponível' },
-      { key: 'dnd', label: 'NÃO PERTURBAR', dotClass: 'dnd', title: 'Não Perturbar' },
-      { key: 'idle', label: 'AUSENTE', dotClass: 'idle', title: 'Ausente' },
-      { key: 'invisible', label: 'OFFLINE / INVISÍVEL', dotClass: 'invisible', title: 'Invisível / Offline' },
+      { key: 'online', label: t('members.onlineCategory'), dotClass: 'online', title: t('status.online') },
+      { key: 'dnd', label: t('members.dndCategory'), dotClass: 'dnd', title: t('status.dnd') },
+      { key: 'idle', label: t('members.idleCategory'), dotClass: 'idle', title: t('status.idle') },
+      { key: 'invisible', label: t('members.offlineCategory'), dotClass: 'invisible', title: t('status.invisible') },
     ];
 
     categoryConfigs.forEach((cfg) => {
@@ -1359,7 +1959,7 @@
           item.className = 'member-item';
           item.style.cursor = 'pointer';
           item.style.justifyContent = 'space-between';
-          item.title = 'Clique para gerenciar cargos ou botão direito para Mensagem Direta';
+          item.title = t('members.memberClickTip');
           const isMe = currentUser && m.id === currentUser.id;
           item.onclick = () => openMemberRolesModal(m.id, m.username, m.avatar);
           item.oncontextmenu = (e) => {
@@ -1379,7 +1979,7 @@
               </div>
             </div>
             ${!isMe ? `
-              <button type="button" class="member-dm-quick-btn" title="Enviar Mensagem Direta para ${escapeHtml(m.username)}" style="background: rgba(255,255,255,0.06); border: none; color: var(--text-muted); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
+              <button type="button" class="member-dm-quick-btn" title="${escapeHtml(t('members.sendDmTo', { user: m.username }))}" style="background: rgba(255,255,255,0.06); border: none; color: var(--text-muted); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
                 ${SVGS.CHAT}
               </button>
             ` : ''}
@@ -1776,13 +2376,13 @@
 
     menu.innerHTML = `
       <div class="context-menu-item" id="guild-ctx-mark-read">
-        <span>Marcar como lido</span>
+        <span>${escapeHtml(t('guilds.markAsRead'))}</span>
       </div>
 
       <div class="context-menu-divider"></div>
 
       <div class="context-menu-item" id="guild-ctx-invite" style="color: #949cf7; font-weight: 600;">
-        <span>Convidar para o servidor</span>
+        <span>${escapeHtml(t('guilds.inviteToServer'))}</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
         </svg>
@@ -1791,28 +2391,28 @@
       <div class="context-menu-divider"></div>
 
       <div class="context-menu-item" id="guild-ctx-mute-row" style="position: relative;">
-        <span>${isMuted ? 'Reativar som do servidor' : 'Silenciar servidor'}</span>
+        <span>${escapeHtml(isMuted ? t('guilds.unmuteServer') : t('guilds.muteServer'))}</span>
         <span style="font-size: 11px; color: var(--text-muted);">▶</span>
         <div id="guild-ctx-mute-submenu" style="display: none; position: absolute; left: 100%; top: -4px; margin-left: 4px; background: #111214; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 6px; min-width: 195px; box-shadow: 0 8px 24px rgba(0,0,0,0.65); z-index: 10001;">
           ${isMuted ? `
             <div class="context-menu-item guild-mute-opt" data-minutes="0">
-              <span>🔊 Reativar notificações agora</span>
+              <span>🔊 ${escapeHtml(t('guilds.unmuteNow'))}</span>
             </div>
           ` : `
-            <div class="context-menu-item guild-mute-opt" data-minutes="15"><span>Por 15 minutos</span></div>
-            <div class="context-menu-item guild-mute-opt" data-minutes="60"><span>Por 1 hora</span></div>
-            <div class="context-menu-item guild-mute-opt" data-minutes="180"><span>Por 3 horas</span></div>
-            <div class="context-menu-item guild-mute-opt" data-minutes="480"><span>Por 8 horas</span></div>
-            <div class="context-menu-item guild-mute-opt" data-minutes="1440"><span>Por 24 horas</span></div>
-            <div class="context-menu-item guild-mute-opt" data-minutes="-1"><span>Até eu reativar</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="15"><span>${escapeHtml(t('status.duration15m'))}</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="60"><span>${escapeHtml(t('status.duration1h'))}</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="180"><span>${escapeHtml(t('guilds.mute3h'))}</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="480"><span>${escapeHtml(t('status.duration8h'))}</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="1440"><span>${escapeHtml(t('status.duration24h'))}</span></div>
+            <div class="context-menu-item guild-mute-opt" data-minutes="-1"><span>${escapeHtml(t('guilds.muteUntilTurnBackOn'))}</span></div>
           `}
         </div>
       </div>
 
       <div class="context-menu-item" id="guild-ctx-notif-settings" style="position: relative;">
         <div style="display: flex; flex-direction: column;">
-          <span>Config. de notificação</span>
-          <span style="font-size: 10px; color: var(--text-muted);">${notifCfg.level === 'mentions' ? 'Apenas @menções' : (notifCfg.level === 'nothing' ? 'Nada' : 'Todas as mensagens')}</span>
+          <span>${escapeHtml(t('guilds.notifSettingsShort'))}</span>
+          <span style="font-size: 10px; color: var(--text-muted);">${escapeHtml(notifCfg.level === 'mentions' ? t('guilds.notifOnlyMentions') : (notifCfg.level === 'nothing' ? t('guilds.notifNothing') : t('guilds.notifAllMessages')))}</span>
         </div>
         <span style="font-size: 11px; color: var(--text-muted);">▶</span>
       </div>
@@ -1820,7 +2420,7 @@
       ${isInsideFolder ? `
         <div class="context-menu-divider"></div>
         <div class="context-menu-item" id="guild-ctx-remove-folder">
-          <span>Remover da Pasta</span>
+          <span>${escapeHtml(t('guilds.removeFromFolder'))}</span>
         </div>
       ` : ''}
 
@@ -1828,14 +2428,14 @@
 
       ${isOwner ? `
         <div class="context-menu-item" id="guild-ctx-delete-server" style="color: #fa777c; font-weight: 600;">
-          <span>Excluir servidor</span>
+          <span>${escapeHtml(t('guilds.deleteServer'))}</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
           </svg>
         </div>
       ` : `
         <div class="context-menu-item" id="guild-ctx-leave-server" style="color: #fa777c; font-weight: 600;">
-          <span>Sair do servidor</span>
+          <span>${escapeHtml(t('guilds.leaveServer'))}</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
             <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
           </svg>
@@ -2364,8 +2964,8 @@
       if (guilds && guilds.length > 0 && !currentGuild) {
         selectGuild(guilds[0]);
       } else if (!guilds || guilds.length === 0) {
-        serverNameEl.textContent = 'Nenhum servidor';
-        channelListEl.innerHTML = '<div style="padding: 16px; font-size: 13px; color: var(--text-muted);">Clique no "+" para criar seu primeiro servidor!</div>';
+        serverNameEl.textContent = t('guilds.noServerTitle');
+        channelListEl.innerHTML = `<div style="padding: 16px; font-size: 13px; color: var(--text-muted);">${escapeHtml(t('guilds.noServerHint'))}</div>`;
       }
     } catch (err) {
       console.error('Error loading guilds:', err);
@@ -2411,7 +3011,7 @@
 
   async function selectHome(autoOpenDmChannelId = null) {
     currentGuild = null;
-    serverNameEl.textContent = 'Mensagens Diretas';
+    serverNameEl.textContent = t('dm.directMessagesTitle');
     if (voiceChatBannerEl) voiceChatBannerEl.style.display = 'none';
     if (voiceCallStageEl) voiceCallStageEl.style.display = 'none';
     if (chatMessagesEl) chatMessagesEl.style.display = 'flex';
@@ -2473,7 +3073,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
         </svg>
-        <span style="font-weight: 700;">Amigos</span>
+        <span style="font-weight: 700;">${escapeHtml(t('dm.friendsNav'))}</span>
       </div>
     `;
     friendsNavItem.onclick = () => {
@@ -2486,7 +3086,7 @@
     // Direct Messages Header
     const dmCat = document.createElement('div');
     dmCat.className = 'channel-category';
-    dmCat.innerHTML = `<span>MENSAGENS DIRETAS</span>`;
+    dmCat.innerHTML = `<span>${escapeHtml(t('dm.directMessagesCategory'))}</span>`;
     channelListEl.appendChild(dmCat);
 
     // Build combined list of open DMs + mutual friends so user can click any friend directly
@@ -2529,7 +3129,7 @@
       const item = document.createElement('div');
       item.className = 'channel-item dm-channel-item';
       item.style.padding = '6px 8px';
-      item.title = `Clique para iniciar Mensagem Direta com ${friend.username}`;
+      item.title = t('members.sendDmTo', { user: friend.username });
       item.innerHTML = `
         <div class="channel-main" style="gap: 10px;">
           <div class="avatar-wrapper" style="width: 32px; height: 32px;">
@@ -2538,7 +3138,7 @@
           </div>
           <div style="display: flex; flex-direction: column; min-width: 0;">
             <span style="font-size: 14px; font-weight: 600; color: var(--text-normal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(friend.username)}</span>
-            <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Amigo em comum</span>
+            <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t('dm.mutualFriendLabel'))}</span>
           </div>
         </div>
       `;
@@ -2549,7 +3149,7 @@
     if (activeDmChannels.length === 0 && mutualContacts.length === 0) {
       const emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'padding: 16px 8px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;';
-      emptyEl.textContent = 'Nenhuma conversa direta iniciada ainda. Entre em um servidor para encontrar amigos em comum!';
+      emptyEl.textContent = t('dm.emptySidebarHint');
       channelListEl.appendChild(emptyEl);
     }
   }
@@ -2561,13 +3161,13 @@
 
     const catHeader = document.createElement('div');
     catHeader.className = 'member-category';
-    catHeader.textContent = `AMIGOS EM COMUM — ${mutualContacts.length}`;
+    catHeader.textContent = `${t('dm.mutualFriendsCategory')} — ${mutualContacts.length}`;
     container.appendChild(catHeader);
 
     if (mutualContacts.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'padding: 12px 8px; font-size: 12px; color: var(--text-muted);';
-      empty.textContent = 'Seus amigos de servidores em comum aparecerão aqui.';
+      empty.textContent = t('dm.mutualFriendsEmptyHint');
       container.appendChild(empty);
       return;
     }
@@ -2578,7 +3178,7 @@
       const item = document.createElement('div');
       item.className = 'member-item';
       item.style.cursor = 'pointer';
-      item.title = `Conversar por Mensagem Direta com ${m.username}`;
+      item.title = t('members.sendDmTo', { user: m.username });
       item.onclick = () => startDirectMessageWithUser(m.id, m.username, m.avatar, m.discriminator);
       item.innerHTML = `
         <div class="avatar-wrapper">
@@ -2602,7 +3202,7 @@
         </svg>
       `;
     }
-    chatHeaderTitleEl.textContent = 'Amigos & Mensagens Diretas';
+    chatHeaderTitleEl.textContent = t('dm.friendsHeaderTitle');
     if (chatInputWrapperEl) chatInputWrapperEl.style.display = 'none';
 
     const allContactsMap = new Map();
@@ -2611,7 +3211,7 @@
       if (d.recipient && !allContactsMap.has(d.recipient.id)) {
         allContactsMap.set(d.recipient.id, {
           ...d.recipient,
-          mutualGuildNames: ['Mensagem Direta'],
+          mutualGuildNames: [t('dm.directMessagesTitle')],
         });
       }
     });
@@ -2624,10 +3224,10 @@
     wrapper.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
         <div>
-          <div style="font-size: 18px; font-weight: 800; color: var(--text-header);">Seus Amigos e Contatos em Comum</div>
-          <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">Envie mensagens diretas instantaneamente sem precisar selecionar um servidor.</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--text-header);">${escapeHtml(t('dm.stageTitle'))}</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(t('dm.stageSubtitle'))}</div>
         </div>
-        <span style="font-size: 12px; font-weight: 700; background: rgba(88,101,242,0.2); color: #fff; padding: 4px 10px; border-radius: 12px;">${friendsList.length} Contatos</span>
+        <span style="font-size: 12px; font-weight: 700; background: rgba(88,101,242,0.2); color: #fff; padding: 4px 10px; border-radius: 12px;">${friendsList.length} ${escapeHtml(t('dm.contactsBadge'))}</span>
       </div>
       <div id="friends-directory-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
     `;
@@ -2636,14 +3236,14 @@
     if (friendsList.length === 0) {
       listContainer.innerHTML = `
         <div style="padding: 40px 20px; text-align: center; background: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
-          <div style="font-size: 16px; font-weight: 700; color: var(--text-header); margin-bottom: 6px;">Nenhum amigo em comum encontrado ainda</div>
-          <div style="font-size: 13px; color: var(--text-muted);">Participe ou convide amigos para um servidor para conversar diretamente com eles por aqui!</div>
+          <div style="font-size: 16px; font-weight: 700; color: var(--text-header); margin-bottom: 6px;">${escapeHtml(t('dm.emptyFriendsTitle'))}</div>
+          <div style="font-size: 13px; color: var(--text-muted);">${escapeHtml(t('dm.emptyFriendsDesc'))}</div>
         </div>
       `;
     } else {
       friendsList.forEach((friend) => {
         const status = memberPresences[friend.id]?.status || (voiceStates.some((s) => s.user?.id === friend.id) ? 'online' : 'invisible');
-        const statusLabel = status === 'online' ? 'Disponível' : (status === 'dnd' ? 'Não Perturbar' : (status === 'idle' ? 'Ausente' : 'Offline'));
+        const statusLabel = status === 'online' ? t('status.online') : (status === 'dnd' ? t('status.dnd') : (status === 'idle' ? t('status.idle') : t('status.invisible')));
         const initials = (friend.username || '??').substring(0, 2).toUpperCase();
 
         const row = document.createElement('div');
@@ -2664,12 +3264,12 @@
                 <span style="font-size: 15px; font-weight: 700; color: var(--text-header);">${escapeHtml(friend.username)}</span>
                 <span style="font-size: 12px; color: var(--text-muted);">#${escapeHtml(friend.discriminator || '0001')}</span>
               </div>
-              <span style="font-size: 12px; color: var(--text-muted);">${statusLabel} • ${escapeHtml((friend.mutualGuildNames || ['Amigo']).join(', '))}</span>
+              <span style="font-size: 12px; color: var(--text-muted);">${escapeHtml(statusLabel)} • ${escapeHtml((friend.mutualGuildNames || [t('dm.mutualFriendLabel')]).join(', '))}</span>
             </div>
           </div>
           <button type="button" class="btn-primary" style="padding: 8px 16px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; border-radius: 6px;">
             ${SVGS.CHAT}
-            <span>Enviar Mensagem</span>
+            <span>${escapeHtml(t('dm.sendMessageBtn'))}</span>
           </button>
         `;
         listContainer.appendChild(row);
@@ -2688,7 +3288,7 @@
       });
       if (dm && dm.id) {
         currentGuild = null;
-        serverNameEl.textContent = 'Mensagens Diretas';
+        serverNameEl.textContent = t('dm.directMessagesTitle');
         document.querySelectorAll('.guild-sidebar .guild-icon').forEach((el) => {
           el.classList.toggle('active', el.classList.contains('home'));
         });
@@ -2703,7 +3303,7 @@
         renderDirectMessagesRightContacts();
       }
     } catch (err) {
-      alert(`Erro ao abrir mensagem direta com ${username || 'usuário'}: ${err.message}`);
+      alert(`${t('common.error')}: ${err.message}`);
     }
   }
   window.startDirectMessageWithUser = startDirectMessageWithUser;
@@ -2714,7 +3314,7 @@
       socket.emit('channel:leave', currentChannel.id);
     }
 
-    const r = dm.recipient || { username: dm.name || 'Amigo', discriminator: '0001', avatar: null };
+    const r = dm.recipient || { username: dm.name || 'User', discriminator: '0001', avatar: null };
     currentChannel = {
       id: dm.id,
       guildId: null,
@@ -2731,7 +3331,7 @@
     chatHeaderTitleEl.innerHTML = `${escapeHtml(r.username)} <span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">#${escapeHtml(r.discriminator || '0001')}</span>`;
     if (chatInputWrapperEl) chatInputWrapperEl.style.display = 'block';
     if (chatInputEl) {
-      chatInputEl.placeholder = `Conversar com @${r.username}`;
+      chatInputEl.placeholder = t('dm.chatPlaceholder', { user: r.username });
       chatInputEl.focus();
     }
 
@@ -2755,7 +3355,7 @@
             ${r.avatar ? `<img src="${escapeHtml(r.avatar)}" style="width: 100%; height: 100%; object-fit: cover;" />` : initials}
           </div>
           <div style="font-size: 22px; font-weight: 800; color: var(--text-header);">${escapeHtml(r.username)}</div>
-          <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Este é o começo do seu histórico de mensagens diretas com <strong>@${escapeHtml(r.username)}</strong>.</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">${t('dm.welcomeHistoryHtml', { user: escapeHtml(r.username) })}</div>
         `;
         chatMessagesEl.appendChild(welcome);
       } else {
@@ -2794,13 +3394,13 @@
     const textCat = document.createElement('div');
     textCat.className = `channel-category ${isTextCollapsed ? 'collapsed' : ''}`;
     textCat.style.cursor = 'pointer';
-    textCat.title = isTextCollapsed ? 'Clique para mostrar os Canais de Texto' : 'Clique para recolher os Canais de Texto';
+    textCat.title = t('channels.textChannels');
     textCat.innerHTML = `
       <span class="category-header-label" style="display: flex; align-items: center; gap: 6px; user-select: none;">
         <span class="category-collapse-arrow" style="display: inline-block; transition: transform 0.15s ease; transform: rotate(${isTextCollapsed ? '-90deg' : '0deg'});">▼</span>
-        <span>CANAIS DE TEXTO</span>
+        <span>${escapeHtml(t('channels.textChannels'))}</span>
       </span>
-      <button class="channel-category-add-btn" title="Criar Canal de Texto">+</button>
+      <button class="channel-category-add-btn" title="${escapeHtml(t('channels.createChannel'))}">+</button>
     `;
     textCat.onclick = (e) => {
       if (e.target.closest('.channel-category-add-btn')) return;
@@ -2838,13 +3438,13 @@
     const voiceCat = document.createElement('div');
     voiceCat.className = `channel-category ${isVoiceCollapsed ? 'collapsed' : ''}`;
     voiceCat.style.cursor = 'pointer';
-    voiceCat.title = isVoiceCollapsed ? 'Clique para mostrar os Canais de Voz' : 'Clique para recolher os Canais de Voz';
+    voiceCat.title = t('channels.voiceChannels');
     voiceCat.innerHTML = `
       <span class="category-header-label" style="display: flex; align-items: center; gap: 6px; user-select: none;">
         <span class="category-collapse-arrow" style="display: inline-block; transition: transform 0.15s ease; transform: rotate(${isVoiceCollapsed ? '-90deg' : '0deg'});">▼</span>
-        <span>CANAIS DE VOZ</span>
+        <span>${escapeHtml(t('channels.voiceChannels'))}</span>
       </span>
-      <button class="channel-category-add-btn" title="Criar Canal de Voz">+</button>
+      <button class="channel-category-add-btn" title="${escapeHtml(t('channels.createChannel'))}">+</button>
     `;
     voiceCat.onclick = (e) => {
       if (e.target.closest('.channel-category-add-btn')) return;
@@ -2870,13 +3470,13 @@
       item.className = `channel-item ${isVoiceConnected || isCurrentChat ? 'active' : ''}`;
       item.setAttribute('data-channel-id', c.id);
       item.innerHTML = `
-        <div class="channel-main" title="Entrar no canal de voz ${escapeHtml(c.name)}">
+        <div class="channel-main" title="${escapeHtml(t('voice.joinVoiceBtn'))}: ${escapeHtml(c.name)}">
           <span class="channel-icon">${SVGS.VOICE}</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
         </div>
         <div class="channel-actions">
-          <button class="channel-action-btn invite-btn" title="Criar Convite para Servidor/Voz">${SVGS.INVITE}</button>
-          <button class="channel-action-btn chat-btn" title="Abrir Chat de Texto">${SVGS.CHAT}</button>
+          <button class="channel-action-btn invite-btn" title="${escapeHtml(t('invite.headerTitle'))}">${SVGS.INVITE}</button>
+          <button class="channel-action-btn chat-btn" title="${escapeHtml(t('voice.openVoiceTextChat'))}">${SVGS.CHAT}</button>
         </div>
       `;
 
@@ -2965,8 +3565,8 @@
           </div>
           <span class="voice-username">${escapeHtml(username)}</span>
           ${volumeBadge}
-          ${s.streaming ? '<span class="live-badge" title="Transmitindo Tela">AO VIVO</span>' : ''}
-          ${s.selfMute ? '<span class="voice-user-badge" title="Microfone Desativado">🔇</span>' : ''}
+          ${s.streaming ? `<span class="live-badge" title="${escapeHtml(t('voice.liveBadge'))}">${escapeHtml(t('voice.liveBadge'))}</span>` : ''}
+          ${s.selfMute ? `<span class="voice-user-badge" title="${escapeHtml(t('voice.muteMic'))}">🔇</span>` : ''}
         `;
 
         row.addEventListener('contextmenu', (e) => {
@@ -3146,10 +3746,10 @@
         const bar = document.createElement('div');
         bar.className = 'stream-floating-bar';
         bar.innerHTML = `
-          <span class="live-badge">AO VIVO</span>
-          <span class="stream-title-label" style="font-weight: 600;">${isCam ? 'Câmera de' : 'Tela de'} ${escapeHtml(displayUsername)}</span>
-          ${item.isLocal ? '<button class="stage-action-btn stop-stream-btn" style="margin-left: auto;">Parar Transmissão</button>' : ''}
-          <button class="stage-action-btn fullscreen-stream-btn" title="Tela Cheia" style="${item.isLocal ? '' : 'margin-left: auto;'}">⛶</button>
+          <span class="live-badge">${escapeHtml(t('voice.liveBadge'))}</span>
+          <span class="stream-title-label" style="font-weight: 600;">${escapeHtml(isCam ? t('voice.cameraOf', { user: displayUsername }) : t('voice.screenOf', { user: displayUsername }))}</span>
+          ${item.isLocal ? `<button class="stage-action-btn stop-stream-btn" style="margin-left: auto;">${escapeHtml(t('voice.stopStreamBtn'))}</button>` : ''}
+          <button class="stage-action-btn fullscreen-stream-btn" title="${escapeHtml(t('voice.fullscreenTitle'))}" style="${item.isLocal ? '' : 'margin-left: auto;'}">⛶</button>
         `;
 
         if (item.isLocal) {
@@ -3183,7 +3783,7 @@
         const titleEl = card.querySelector('.stream-title-label');
         if (titleEl) {
           const isCam = item.type === 'camera';
-          titleEl.textContent = `${isCam ? 'Câmera de' : 'Tela de'} ${displayUsername}`;
+          titleEl.textContent = isCam ? t('voice.cameraOf', { user: displayUsername }) : t('voice.screenOf', { user: displayUsername });
         }
         const pipNameEl = card.querySelector('.stream-pip-name');
         if (pipNameEl) pipNameEl.textContent = displayUsername;
@@ -3212,10 +3812,12 @@
     if (dockBtnMicEl) {
       dockBtnMicEl.innerHTML = isMuted ? SVGS.MIC_OFF : SVGS.MIC_ON;
       dockBtnMicEl.classList.toggle('muted', isMuted);
+      dockBtnMicEl.title = isMuted ? t('voice.unmuteMic') : t('voice.muteMic');
     }
     if (dockBtnDeafEl) {
       dockBtnDeafEl.innerHTML = isDeafened ? SVGS.DEAF_OFF : SVGS.DEAF_ON;
       dockBtnDeafEl.classList.toggle('muted', isDeafened);
+      dockBtnDeafEl.title = isDeafened ? t('voice.undeafenAudio') : t('voice.deafenAudio');
     }
     if (dockBtnScreenshareEl) {
       dockBtnScreenshareEl.classList.toggle('active', !!screenStream);
@@ -3230,13 +3832,13 @@
     if (dockBtnKrispEl && window.SyncCordAudioSettings) {
       const isKrisp = window.SyncCordAudioSettings.get('noiseSuppression') !== false;
       dockBtnKrispEl.classList.toggle('active', !!isKrisp);
-      dockBtnKrispEl.title = isKrisp ? 'Supressão de Ruído Krisp (Ativada)' : 'Supressão de Ruído Krisp (Desativada)';
+      dockBtnKrispEl.title = isKrisp ? t('voice.krispOnTitle') : t('voice.krispOffTitle');
     }
     const dockBtnVoiceIsoEl = document.getElementById('dock-btn-voice-isolation');
     if (dockBtnVoiceIsoEl && window.SyncCordAudioSettings) {
       const isIso = window.SyncCordAudioSettings.get('voiceIsolation') !== false;
       dockBtnVoiceIsoEl.classList.toggle('active', !!isIso);
-      dockBtnVoiceIsoEl.title = isIso ? 'Flag Isolamento de Voz (Ativado)' : 'Flag Isolamento de Voz (Desativado)';
+      dockBtnVoiceIsoEl.title = isIso ? t('voice.voiceIsoOnTitle') : t('voice.voiceIsoOffTitle');
     }
     const modalToggleKrisp = document.getElementById('modal-toggle-krisp');
     if (modalToggleKrisp && window.SyncCordAudioSettings) {
@@ -4606,14 +5208,14 @@
 
     if (isVoice) {
       if (chatHeaderIconEl) chatHeaderIconEl.innerHTML = SVGS.VOICE;
-      chatHeaderTitleEl.innerHTML = `${escapeHtml(channel.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Canal de Voz</span>`;
-      chatInputEl.placeholder = `Conversar em #${channel.name} (Chat de Voz)`;
+      chatHeaderTitleEl.innerHTML = `${escapeHtml(channel.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${escapeHtml(t('voice.voiceChannelTag'))}</span>`;
+      chatInputEl.placeholder = t('chat.voicePlaceholder', { channel: channel.name });
       if (headerVoiceChatBtn) headerVoiceChatBtn.style.display = 'flex';
-      document.title = `${currentGuild ? currentGuild.name + ' - ' : ''}${channel.name} (Voz) | SyncCord`;
+      document.title = `${currentGuild ? currentGuild.name + ' - ' : ''}${channel.name} (${t('channels.voice')}) | SyncCord`;
     } else {
       if (chatHeaderIconEl) chatHeaderIconEl.innerHTML = SVGS.HASH;
       chatHeaderTitleEl.textContent = channel.name;
-      chatInputEl.placeholder = `Conversar em #${channel.name}`;
+      chatInputEl.placeholder = t('chat.placeholder', { channel: channel.name });
       if (headerVoiceChatBtn && !connectedVoiceChannel) headerVoiceChatBtn.style.display = 'none';
       if (!connectedVoiceChannel) closeVoiceChannelChat();
       document.title = `${currentGuild ? currentGuild.name + ' - ' : ''}#${channel.name} | SyncCord`;
@@ -4644,10 +5246,10 @@
       if (voiceChatBannerNameEl) voiceChatBannerNameEl.textContent = currentChannel.name;
       if (voiceJoinQuickBtnEl) {
         if (connectedVoiceChannel && connectedVoiceChannel.id === currentChannel.id) {
-          voiceJoinQuickBtnEl.textContent = 'Conectado na Voz ✅';
+          voiceJoinQuickBtnEl.textContent = t('voice.connectedVoiceBtn');
           voiceJoinQuickBtnEl.style.backgroundColor = 'var(--accent)';
         } else {
-          voiceJoinQuickBtnEl.textContent = 'Entrar na Voz';
+          voiceJoinQuickBtnEl.textContent = t('voice.joinVoiceBtn');
           voiceJoinQuickBtnEl.style.backgroundColor = 'var(--green)';
         }
       }
@@ -4665,17 +5267,42 @@
   function formatMessageAndLinks(rawContent) {
     if (!rawContent) return { formattedHtml: '', urls: [] };
 
-    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
     const urls = [];
+    const dataImgRegex = /(data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/g;
+    let dm;
+    while ((dm = dataImgRegex.exec(rawContent)) !== null) {
+      urls.push(dm[1]);
+    }
+
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
     let m;
     while ((m = urlRegex.exec(rawContent)) !== null) {
       urls.push(m[1]);
     }
 
-    const escaped = escapeHtml(rawContent);
-    const formattedHtml = escaped.replace(/(https?:\/\/[^\s<>"']+)/gi, (url) => {
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="discord-message-link">${url}</a>`;
+    // Strip standalone data:image URI from visible text so only the image card (or hidden-media pill) renders cleanly
+    const textWithoutInlineBase64 = rawContent
+      .replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '')
+      .trim();
+
+    let escaped = escapeHtml(textWithoutInlineBase64);
+
+    // Protect URLs with placeholders before converting emoticons
+    const linkTokens = [];
+    escaped = escaped.replace(/(https?:\/\/[^\s<>"']+)/gi, (url) => {
+      const idx = linkTokens.length;
+      linkTokens.push(`<a href="${url}" target="_blank" rel="noopener noreferrer" class="discord-message-link">${url}</a>`);
+      return `__SYNCCORD_ANCHOR_${idx}__`;
     });
+
+    // Flag 2: Converter Emoticons em Emojis
+    if (textImagesSettings.convertEmoticons && escaped) {
+      EMOTICON_RULES.forEach((rule) => {
+        escaped = escaped.replace(rule.pattern, rule.emoji);
+      });
+    }
+
+    const formattedHtml = escaped.replace(/__SYNCCORD_ANCHOR_(\d+)__/g, (_match, idx) => linkTokens[Number(idx)] || '');
 
     return { formattedHtml, urls };
   }
@@ -4689,7 +5316,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
           </svg>
-          <span>Copiado!</span>
+          <span>${escapeHtml(t('common.copied'))}</span>
         `;
         btnElement.classList.add('copied');
         setTimeout(() => {
@@ -4726,25 +5353,50 @@
 
   function renderLinkPreviews(container, urls) {
     if (!container || !urls || urls.length === 0) return;
-    const uniqueUrls = [...new Set(urls)].slice(0, 2);
+    const uniqueUrls = [...new Set(urls)].slice(0, 3);
 
     uniqueUrls.forEach((url) => {
-      // 1. Direct Image
-      if (/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url)) {
+      // 1. Direct Uploaded Data Image or Direct Image/Media URL (Gated by Flag 1: showImagesMedia)
+      const isDataImage = url.startsWith('data:image/');
+      const isDirectImage = isDataImage || /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url);
+      if (isDirectImage) {
+        if (!textImagesSettings.showImagesMedia) {
+          const hiddenPill = document.createElement('a');
+          hiddenPill.className = 'discord-media-hidden-pill';
+          hiddenPill.href = isDataImage ? 'javascript:void(0)' : url;
+          if (!isDataImage) {
+            hiddenPill.target = '_blank';
+            hiddenPill.rel = 'noopener noreferrer';
+          }
+          hiddenPill.textContent = `🖼️ ${t('textImages.mediaHiddenNotice')}`;
+          if (isDataImage) {
+            hiddenPill.onclick = () => openUserSettingsTab('text-images');
+          }
+          container.appendChild(hiddenPill);
+          return;
+        }
+
         const imgEmbed = document.createElement('div');
         imgEmbed.className = 'discord-embed-image';
-        imgEmbed.innerHTML = `
-          <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapeHtml(url)}" alt="Imagem anexada" loading="lazy" />
-          </a>
-        `;
+        if (isDataImage) {
+          imgEmbed.innerHTML = `<img src="${escapeHtml(url)}" alt="Media" loading="lazy" onclick="window.open('${escapeHtml(url)}', '_blank')" />`;
+        } else {
+          imgEmbed.innerHTML = `
+            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+              <img src="${escapeHtml(url)}" alt="Media" loading="lazy" />
+            </a>
+          `;
+        }
         container.appendChild(imgEmbed);
         return;
       }
 
-      // 2. YouTube Video
+      // 2. YouTube Video (Gated by both showImagesMedia & showLinkPreviews)
       const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch && ytMatch[1]) {
+        if (!textImagesSettings.showImagesMedia || !textImagesSettings.showLinkPreviews) {
+          return;
+        }
         const ytId = ytMatch[1];
         const ytEmbed = document.createElement('div');
         ytEmbed.className = 'discord-embed-youtube';
@@ -4761,7 +5413,11 @@
         return;
       }
 
-      // 3. Web Page / OpenGraph preview via backend API
+      // 3. Web Page / OpenGraph preview via backend API (Gated by Flag 3: showLinkPreviews)
+      if (!textImagesSettings.showLinkPreviews) {
+        return;
+      }
+
       if (linkPreviewCache.has(url)) {
         const cached = linkPreviewCache.get(url);
         if (cached) renderEmbedCard(container, cached);
@@ -4774,7 +5430,9 @@
           return;
         }
         linkPreviewCache.set(url, data);
-        renderEmbedCard(container, data);
+        if (textImagesSettings.showLinkPreviews) {
+          renderEmbedCard(container, data);
+        }
       }).catch(() => {
         linkPreviewCache.set(url, null);
       });
@@ -4782,6 +5440,7 @@
   }
 
   function renderEmbedCard(container, data) {
+    if (!textImagesSettings.showLinkPreviews) return;
     if (!data || (!data.title && !data.description && !data.image)) return;
     const card = document.createElement('div');
     card.className = 'discord-embed';
@@ -4789,14 +5448,16 @@
       card.style.borderLeftColor = data.themeColor;
     }
 
+    const showThumb = Boolean(data.image && textImagesSettings.showImagesMedia);
+
     card.innerHTML = `
       ${data.siteName ? `<div class="discord-embed-provider">${escapeHtml(data.siteName)}</div>` : ''}
       ${data.title ? `<a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer" class="discord-embed-title">${escapeHtml(data.title)}</a>` : ''}
       ${data.description ? `<div class="discord-embed-desc">${escapeHtml(data.description)}</div>` : ''}
-      ${data.image ? `
+      ${showThumb ? `
         <div class="discord-embed-thumbnail-wrapper">
           <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapeHtml(data.image)}" class="discord-embed-thumbnail" alt="Preview da página" loading="lazy" onerror="this.parentElement.remove()" />
+            <img src="${escapeHtml(data.image)}" class="discord-embed-thumbnail" alt="Preview" loading="lazy" onerror="this.parentElement.remove()" />
           </a>
         </div>
       ` : ''}
@@ -4804,6 +5465,26 @@
 
     container.appendChild(card);
   }
+
+  function reapplyTextImagesSettingsToDOM() {
+    document.querySelectorAll('.message-item, .voice-message-item').forEach((msgEl) => {
+      const rawContent = msgEl.getAttribute('data-raw-content') || '';
+      const textEl = msgEl.querySelector('.message-text');
+      const previewsContainer = msgEl.querySelector('.message-previews-container');
+      const hadEditedTag = Boolean(msgEl.querySelector('.message-edited-tag'));
+      const { formattedHtml, urls } = formatMessageAndLinks(rawContent);
+      if (textEl && !textEl.querySelector('.inline-edit-message-box')) {
+        textEl.innerHTML = `${formattedHtml}${hadEditedTag ? ` <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(${escapeHtml(t('chat.editedTag'))})</span>` : ''}`;
+      }
+      if (previewsContainer) {
+        previewsContainer.innerHTML = '';
+        if (urls.length > 0) {
+          renderLinkPreviews(previewsContainer, urls);
+        }
+      }
+    });
+  }
+  window.reapplyTextImagesSettingsToDOM = reapplyTextImagesSettingsToDOM;
 
   let activeMessageContextMenu = null;
 
@@ -4851,20 +5532,20 @@
       <div class="context-menu-item" id="sidebar-empty-ctx-create-voice">
         <div style="display: flex; align-items: center; gap: 8px;">
           ${SVGS.VOICE}
-          <span>Criar Lounge de Voz</span>
+          <span>${escapeHtml(t('channels.createVoiceLounge'))}</span>
         </div>
       </div>
       <div class="context-menu-item" id="sidebar-empty-ctx-create-text">
         <div style="display: flex; align-items: center; gap: 8px;">
           ${SVGS.HASH}
-          <span>Criar Canal de Texto</span>
+          <span>${escapeHtml(t('channels.createTextChannel'))}</span>
         </div>
       </div>
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" id="sidebar-empty-ctx-invite">
         <div style="display: flex; align-items: center; gap: 8px;">
           ${SVGS.INVITE}
-          <span>Convidar para o Servidor</span>
+          <span>${escapeHtml(t('guilds.inviteToServer'))}</span>
         </div>
       </div>
     `;
@@ -4919,19 +5600,19 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
           </svg>
-          <span>Alterar Nome / Editar Canal</span>
+          <span>${escapeHtml(t('channels.editChannelTitle'))}</span>
         </div>
       </div>
       <div class="context-menu-item" id="chan-ctx-invite">
         <div style="display: flex; align-items: center; gap: 8px;">
           ${SVGS.INVITE}
-          <span>Convidar Pessoas</span>
+          <span>${escapeHtml(t('channels.invitePeople'))}</span>
         </div>
       </div>
       <div class="context-menu-item" id="chan-ctx-copy-id">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-weight: 800; font-size: 13px;">ID</span>
-          <span>Copiar ID do Canal</span>
+          <span>${escapeHtml(t('channels.copyChannelId'))}</span>
         </div>
       </div>
       <div class="context-menu-divider"></div>
@@ -4940,7 +5621,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
           </svg>
-          <span>Excluir Canal ${isVoice ? 'de Voz' : 'de Texto'}</span>
+          <span>${escapeHtml(isVoice ? t('channels.deleteVoiceChannel') : t('channels.deleteTextChannel'))}</span>
         </div>
       </div>
     `;
@@ -4961,7 +5642,7 @@
       ev.stopPropagation();
       closeChannelContextMenu();
       copyMessageText(channel.id);
-      showToastNotification('ID do canal copiado!');
+      showToastNotification(t('common.copied'));
     });
 
     menu.querySelector('#chan-ctx-delete').addEventListener('click', (ev) => {
@@ -4995,7 +5676,7 @@
     if (idInput) idInput.value = channel.id;
     if (typeInput) typeInput.value = String(channel.type || 0);
     if (prefixIcon) prefixIcon.textContent = channel.type === 2 ? '🔊' : '#';
-    if (titleEl) titleEl.textContent = channel.type === 2 ? 'Alterar Nome do Canal de Voz' : 'Alterar Nome do Canal de Texto';
+    if (titleEl) titleEl.textContent = t('channels.editChannelTitle');
     if (nameInput) {
       nameInput.value = channel.name || '';
       setTimeout(() => {
@@ -5028,7 +5709,7 @@
 
     if (!newName) {
       if (errorEl) {
-        errorEl.textContent = 'O nome do canal não pode ficar vazio.';
+        errorEl.textContent = t('channels.emptyNameError');
         errorEl.style.display = 'block';
       }
       return;
@@ -5044,7 +5725,7 @@
         currentChannel.name = updated.name;
         if (chatHeaderTitleEl) {
           if (currentChannel.type === 2) {
-            chatHeaderTitleEl.innerHTML = `${escapeHtml(updated.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Canal de Voz</span>`;
+            chatHeaderTitleEl.innerHTML = `${escapeHtml(updated.name)} <span style="font-size: 11px; background: rgba(88,101,242,0.3); color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${escapeHtml(t('voice.voiceChannelTag'))}</span>`;
           } else {
             chatHeaderTitleEl.textContent = updated.name;
           }
@@ -5058,10 +5739,10 @@
         const channels = await api(`/guilds/${currentGuild.id}/channels`);
         renderChannels(channels);
       }
-      showToastNotification('Nome do canal atualizado com sucesso!');
+      showToastNotification(t('common.saved'));
     } catch (err) {
       if (errorEl) {
-        errorEl.textContent = err.message || 'Erro ao renomear canal.';
+        errorEl.textContent = err.message || t('common.error');
         errorEl.style.display = 'block';
       }
     }
@@ -5074,10 +5755,10 @@
     const displayPrefix = isVoice ? '🔊 ' : '#';
 
     showConfirmDialog({
-      title: 'Excluir Canal',
-      message: `Tem certeza de que deseja excluir o canal <strong>${displayPrefix}${escapeHtml(channel.name)}</strong>? Esta ação não pode ser desfeita.`,
-      confirmText: 'Excluir Canal',
-      cancelText: 'Cancelar',
+      title: t('channels.deleteChannelConfirmTitle'),
+      message: t('channels.deleteChannelConfirmMsg', { channel: `${displayPrefix}${escapeHtml(channel.name)}` }),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
       danger: true,
       onConfirm: async () => {
         try {
@@ -5092,9 +5773,9 @@
             const channels = await api(`/guilds/${currentGuild.id}/channels`);
             renderChannels(channels);
           }
-          showToastNotification(`Canal ${channel.name} excluído com sucesso!`);
+          showToastNotification(t('common.saved'));
         } catch (err) {
-          alert(`Erro ao excluir canal: ${err.message}`);
+          alert(`${t('common.error')}: ${err.message}`);
         }
       },
     });
@@ -5124,19 +5805,19 @@
         <div class="context-menu-item" id="mem-ctx-dm">
           <div style="display: flex; align-items: center; gap: 8px;">
             ${SVGS.CHAT}
-            <span>Enviar Mensagem Direta</span>
+            <span>${escapeHtml(t('dm.sendMessageBtn'))}</span>
           </div>
         </div>
         <div class="context-menu-divider"></div>
       ` : ''}
       <div class="context-menu-item" id="mem-ctx-roles">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span>🛡️ Gerenciar Cargos</span>
+          <span>🛡️ ${escapeHtml(t('roles.manageRolesTitle'))}</span>
         </div>
       </div>
       <div class="context-menu-item" id="mem-ctx-copy-id">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span># Copiar ID do Usuário</span>
+          <span># ${escapeHtml(t('contextMenu.copyId'))}</span>
         </div>
       </div>
     `;
@@ -5160,7 +5841,7 @@
       ev.stopPropagation();
       closeMemberContextMenu();
       copyMessageText(member.id);
-      showToastNotification('ID do usuário copiado!');
+      showToastNotification(t('common.copied'));
     });
 
     document.body.appendChild(menu);
@@ -5194,7 +5875,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
             </svg>
-            <span>Editar Mensagem</span>
+            <span>${escapeHtml(t('chat.editMessage'))}</span>
           </div>
         </div>
       ` : ''}
@@ -5203,7 +5884,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
           </svg>
-          <span>Copiar Texto</span>
+          <span>${escapeHtml(t('chat.copyText'))}</span>
         </div>
         <span style="font-size: 11px; color: var(--text-muted);">Ctrl+C</span>
       </div>
@@ -5212,7 +5893,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
           </svg>
-          <span>Copiar Link da Mensagem</span>
+          <span>${escapeHtml(t('chat.copyMessageLink'))}</span>
         </div>
       </div>
       ${isMine && messageId ? `
@@ -5222,7 +5903,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
             </svg>
-            <span>Excluir Mensagem</span>
+            <span>${escapeHtml(t('chat.deleteMessage'))}</span>
           </div>
         </div>
       ` : ''}
@@ -5281,7 +5962,7 @@
       <div class="inline-edit-message-box" style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
         <input type="text" class="form-input inline-edit-input" value="${escapeHtml(currentRaw)}" style="background: var(--bg-tertiary); color: var(--text-header); font-size: 14px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--accent);" />
         <div style="font-size: 11px; color: var(--text-muted);">
-          escape para <a href="javascript:void(0)" class="inline-edit-cancel" style="color: #00a8fc; text-decoration: none;">cancelar</a> • enter para <a href="javascript:void(0)" class="inline-edit-save" style="color: #00a8fc; text-decoration: none;">salvar</a>
+          escape: <a href="javascript:void(0)" class="inline-edit-cancel" style="color: #00a8fc; text-decoration: none;">${escapeHtml(t('common.cancel').toLowerCase())}</a> • enter: <a href="javascript:void(0)" class="inline-edit-save" style="color: #00a8fc; text-decoration: none;">${escapeHtml(t('common.save').toLowerCase())}</a>
         </div>
       </div>
     `;
@@ -5295,7 +5976,7 @@
     };
 
     const saveEdit = async () => {
-      const newContent = input.value.trim();
+      const newContent = convertRawEmoticonsIfEnabled(input.value.trim());
       if (!newContent || newContent === currentRaw) {
         cancelEdit();
         return;
@@ -5314,14 +5995,14 @@
         });
         msgEl.setAttribute('data-raw-content', newContent);
         const { formattedHtml, urls } = formatMessageAndLinks(newContent);
-        textEl.innerHTML = `${formattedHtml} <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(editado)</span>`;
+        textEl.innerHTML = `${formattedHtml} <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(${escapeHtml(t('chat.editedTag'))})</span>`;
         const previewsContainer = msgEl.querySelector('.message-previews-container');
         if (previewsContainer) {
           previewsContainer.innerHTML = '';
           if (urls.length > 0) renderLinkPreviews(previewsContainer, urls);
         }
       } catch (err) {
-        alert(`Erro ao editar mensagem: ${err.message}`);
+        alert(`${t('common.error')}: ${err.message}`);
         cancelEdit();
       }
     };
@@ -5353,10 +6034,10 @@
     if (!targetChannelId) return;
 
     showConfirmDialog({
-      title: 'Excluir Mensagem',
-      message: 'Tem certeza de que deseja excluir esta mensagem?',
-      confirmText: 'Excluir',
-      cancelText: 'Cancelar',
+      title: t('chat.deleteMessage'),
+      message: t('chat.deleteMessageConfirm'),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
       danger: true,
       onConfirm: async () => {
         try {
@@ -5364,9 +6045,9 @@
             method: 'DELETE',
           });
           document.querySelectorAll(`[data-message-id="${messageId}"], [data-msg-id="${messageId}"]`).forEach((el) => el.remove());
-          showToastNotification('Mensagem excluída!');
+          showToastNotification(t('chat.messageDeleted'));
         } catch (err) {
-          alert(`Erro ao excluir mensagem: ${err.message}`);
+          alert(`${t('common.error')}: ${err.message}`);
         }
       },
     });
@@ -5397,20 +6078,20 @@
 
     menu.innerHTML = `
       <div class="context-menu-item" id="input-ctx-paste">
-        <span>📋 Colar</span>
+        <span>📋 ${escapeHtml(t('contextMenu.paste'))}</span>
         <span style="font-size: 11px; color: var(--text-muted);">Ctrl+V</span>
       </div>
       <div class="context-menu-item" id="input-ctx-copy">
-        <span>📄 Copiar</span>
+        <span>📄 ${escapeHtml(t('common.copy'))}</span>
         <span style="font-size: 11px; color: var(--text-muted);">Ctrl+C</span>
       </div>
       <div class="context-menu-item" id="input-ctx-cut">
-        <span>✂️ Recortar</span>
+        <span>✂️ ${escapeHtml(t('contextMenu.cut'))}</span>
         <span style="font-size: 11px; color: var(--text-muted);">Ctrl+X</span>
       </div>
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" id="input-ctx-select-all">
-        <span>🔤 Selecionar Tudo</span>
+        <span>🔤 ${escapeHtml(t('contextMenu.selectAll'))}</span>
         <span style="font-size: 11px; color: var(--text-muted);">Ctrl+A</span>
       </div>
     `;
@@ -5486,7 +6167,7 @@
 
     const rawName = (isMine && currentUser.username)
       ? currentUser.username
-      : (msg.authorName || msg.author_name || (member ? member.username : 'Membro'));
+      : (msg.authorName || msg.author_name || (member ? member.username : 'Member'));
     const authorName = escapeHtml(rawName);
 
     const rawAvatar = (isMine && currentUser.avatar)
@@ -5496,7 +6177,7 @@
 
     const initials = authorName.substring(0, 2).toUpperCase();
     const timeRaw = msg.createdAt || msg.timestamp;
-    const timeStr = timeRaw ? new Date(timeRaw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Agora';
+    const timeStr = timeRaw ? new Date(timeRaw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : t('chat.now');
 
     const rawContent = msg.content || '';
     el.setAttribute('data-raw-content', rawContent);
@@ -5506,18 +6187,18 @@
     el.innerHTML = `
       <div class="message-actions-bar">
         ${isMine && msg.id ? `
-          <button class="message-action-btn edit-msg-btn" title="Editar Mensagem">
+          <button class="message-action-btn edit-msg-btn" title="${escapeHtml(t('chat.editMessage'))}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
             </svg>
-            <span>Editar</span>
+            <span>${escapeHtml(t('common.edit'))}</span>
           </button>
         ` : ''}
-        <button class="message-action-btn copy-msg-btn" title="Copiar Mensagem">
+        <button class="message-action-btn copy-msg-btn" title="${escapeHtml(t('chat.copyText'))}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
           </svg>
-          <span>Copiar</span>
+          <span>${escapeHtml(t('common.copy'))}</span>
         </button>
       </div>
       ${authorAvatar ? `<img src="${authorAvatar}" class="message-avatar" style="object-fit: cover; border-radius: 50%; width: 40px; height: 40px;" />` : `<div class="message-avatar">${initials}</div>`}
@@ -5526,7 +6207,7 @@
           <span class="author-name">${authorName}</span>
           <span class="message-time">${timeStr}</span>
         </div>
-        <div class="message-text">${formattedHtml}${isEdited ? ' <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(editado)</span>' : ''}</div>
+        <div class="message-text">${formattedHtml}${isEdited ? ` <span class="message-edited-tag" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(${escapeHtml(t('chat.editedTag'))})</span>` : ''}</div>
         <div class="message-previews-container"></div>
       </div>
     `;
@@ -5557,9 +6238,10 @@
   }
 
   async function sendMessage() {
-    const text = chatInputEl.value.trim();
-    if (!text || !currentChannel) return;
+    const rawText = chatInputEl.value.trim();
+    if (!rawText || !currentChannel) return;
 
+    const text = convertRawEmoticonsIfEnabled(rawText);
     chatInputEl.value = '';
 
     try {
@@ -5568,7 +6250,7 @@
         body: JSON.stringify({ content: text }),
       });
     } catch (err) {
-      alert(`Erro ao enviar mensagem: ${err.message}`);
+      alert(`${t('common.error')}: ${err.message}`);
     }
   }
 
@@ -5587,9 +6269,9 @@
 
     if (title) {
       if (targetChannel && targetChannel.name) {
-        title.textContent = `Convidar amigos para #${targetChannel.name}`;
+        title.textContent = t('invite.inviteToChannel', { channel: `#${targetChannel.name}` });
       } else {
-        title.textContent = `Convidar amigos para ${currentGuild?.name || 'Servidor'}`;
+        title.textContent = t('invite.inviteToChannel', { channel: currentGuild?.name || t('guilds.serverLabel') });
       }
     }
 
@@ -5601,7 +6283,7 @@
     input.value = `${window.location.origin}/${qs}`;
 
     if (copyBtn) {
-      copyBtn.textContent = 'Copiar';
+      copyBtn.textContent = t('common.copy');
       copyBtn.style.backgroundColor = 'var(--accent)';
     }
 
@@ -5614,11 +6296,11 @@
   function updateAudioButtons() {
     if (btnToggleMicEl) {
       btnToggleMicEl.innerHTML = isMuted ? SVGS.MIC_OFF : SVGS.MIC_ON;
-      btnToggleMicEl.title = isMuted ? 'Ativar Microfone' : 'Desativar Microfone';
+      btnToggleMicEl.title = isMuted ? t('voice.unmuteMic') : t('voice.muteMic');
     }
     if (btnToggleDeafEl) {
       btnToggleDeafEl.innerHTML = isDeafened ? SVGS.DEAF_OFF : SVGS.DEAF_ON;
-      btnToggleDeafEl.title = isDeafened ? 'Ativar Áudio' : 'Desativar Áudio';
+      btnToggleDeafEl.title = isDeafened ? t('voice.undeafenAudio') : t('voice.deafenAudio');
     }
     updateDockButtonsState();
   }
@@ -5850,6 +6532,109 @@
     });
 
     sendBtnEl.addEventListener('click', sendMessage);
+
+    // Emoji Picker Triggers (Main Chat & Voice Channel Sidebar Chat)
+    const mainEmojiBtn = document.getElementById('chat-emoji-btn');
+    if (mainEmojiBtn && chatInputEl) {
+      mainEmojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleEmojiPicker(chatInputEl, mainEmojiBtn);
+      });
+    }
+
+    const voiceEmojiBtn = document.getElementById('voice-chat-emoji-btn');
+    const voiceSidebarInputForEmoji = document.getElementById('voice-chat-sidebar-input');
+    if (voiceEmojiBtn && voiceSidebarInputForEmoji) {
+      voiceEmojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleEmojiPicker(voiceSidebarInputForEmoji, voiceEmojiBtn);
+      });
+    }
+
+    // Chat "+" Media / Image Upload Button
+    const chatAttachBtn = document.getElementById('chat-attach-btn');
+    const chatMediaInput = document.getElementById('chat-media-file-input');
+    if (chatAttachBtn && chatMediaInput) {
+      chatAttachBtn.addEventListener('click', () => {
+        if (!currentChannel) return;
+        chatMediaInput.click();
+      });
+      chatMediaInput.addEventListener('change', (ev) => {
+        const file = ev.target.files?.[0];
+        ev.target.value = '';
+        if (!file || !currentChannel) return;
+        if (!file.type.startsWith('image/')) {
+          alert(t('common.error'));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (loadEv) => {
+          const rawUrl = loadEv.target?.result;
+          if (typeof rawUrl !== 'string') return;
+          const img = new window.Image();
+          img.onload = async () => {
+            const maxDim = 900;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.84);
+            const caption = chatInputEl.value.trim();
+            chatInputEl.value = '';
+            const payload = caption
+              ? `${convertRawEmoticonsIfEnabled(caption)} ${compressed}`
+              : compressed;
+            try {
+              await api(`/channels/${currentChannel.id}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ content: payload }),
+              });
+            } catch (err) {
+              alert(`${t('common.error')}: ${err.message}`);
+            }
+          };
+          img.src = rawUrl;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // OAuth2 / OpenID Popup Completion Listener
+    window.addEventListener('message', async (ev) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data;
+      if (!data || data.type !== 'SYNCCORD_OAUTH_COMPLETE') return;
+      if (data.success) {
+        await loadUserConnections();
+        const activeTabEl = document.querySelector('.settings-nav-item.active');
+        if (activeTabEl && activeTabEl.getAttribute('data-tab') === 'connections') {
+          switchSettingsTab('connections');
+        }
+        const brandName = BRAND_PROVIDERS[data.provider]?.name || data.provider;
+        showToastNotification(t('connections.linkedSuccess', { provider: brandName, account: data.accountName || '' }));
+      } else if (data.error) {
+        showToastNotification(`${t('common.error')}: ${data.error}`);
+      }
+    });
+
+    const connSyncModalEl = document.getElementById('connection-sync-modal');
+    if (connSyncModalEl) {
+      connSyncModalEl.addEventListener('click', (e) => {
+        if (e.target === connSyncModalEl) closeConnectionSyncModal();
+      });
+    }
 
     if (voiceDisconnectBtnEl) {
       voiceDisconnectBtnEl.addEventListener('click', () => leaveVoiceChannel(true));
@@ -6337,6 +7122,8 @@
 
         showAuthModal(false);
         updateUserPanel();
+        loadUserConnections();
+        loadAuthorizedApps();
         initWebSocket();
 
         // Processa convite pendente automaticamente após autenticação
@@ -6444,9 +7231,10 @@
       if (currentUser.bio) {
         popoverStatusText.textContent = currentUser.bio.length > 36 ? currentUser.bio.substring(0, 36) + '...' : currentUser.bio;
       } else {
-        popoverStatusText.textContent = 'Definir um recado no perfil...';
+        popoverStatusText.textContent = t('profile.customStatus');
       }
     }
+    renderPopoverConnections();
   }
 
   function openUserSettingsTab(tabKey) {
@@ -6539,9 +7327,9 @@
       feedbackBox.innerHTML = '';
     }
     if (submitBtn) {
-      submitBtn.innerHTML = isLogin ?
-        '<i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar' :
-        '<i class="fa-solid fa-envelope-circle-check"></i> Enviar Link de Confirmação';
+      submitBtn.innerHTML = isLogin
+        ? `<i class="fa-solid fa-arrow-right-to-bracket"></i> ${escapeHtml(t('auth.loginTab'))}`
+        : `<i class="fa-solid fa-envelope-circle-check"></i> ${escapeHtml(t('auth.sendConfirmLinkBtn'))}`;
     }
   };
 
@@ -6567,7 +7355,7 @@
     if (membersEl) membersEl.style.display = 'none';
     if (titleEl) titleEl.textContent = channel.name;
     if (inputEl) {
-      inputEl.placeholder = `Conversar em #${channel.name}`;
+      inputEl.placeholder = t('chat.placeholder', { channel: channel.name });
       inputEl.focus();
     }
     if (dockChatBtn) dockChatBtn.classList.add('active');
@@ -6614,7 +7402,7 @@
     const container = document.getElementById('voice-chat-sidebar-messages');
     if (!container) return;
 
-    container.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">Carregando mensagens...</div>';
+    container.innerHTML = `<div style="color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px;">${escapeHtml(t('common.loading'))}</div>`;
 
     if (currentGuild && (!guildMembers || guildMembers.length === 0)) {
       guildMembers = (await api(`/guilds/${currentGuild.id}/members`).catch(() => [])) || [];
@@ -6631,8 +7419,8 @@
                 <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.486 2 2 6.486 2 12c0 1.837.5 3.557 1.369 5.032L2.094 21.26a1 1 0 0 0 1.218 1.218l4.228-1.275A9.948 9.948 0 0 0 12 22c5.514 0 10-4.486 10-10S17.514 2 12 2zm-5 9a1 1 0 1 1 0-2h10a1 1 0 1 1 0 2H7zm0 4a1 1 0 1 1 0-2h7a1 1 0 1 1 0 2H7z"/>
               </svg>
             </div>
-            <div style="font-weight: 700; color: var(--text-header); font-size: 15px; margin-bottom: 4px;">Bem-vindo ao chat do canal de voz!</div>
-            <div style="font-size: 12px; line-height: 16px;">Este é o início do histórico de mensagens deste canal de voz. Envie uma mensagem abaixo para começar.</div>
+            <div style="font-weight: 700; color: var(--text-header); font-size: 15px; margin-bottom: 4px;">${escapeHtml(t('voice.voiceChatWelcomeTitle'))}</div>
+            <div style="font-size: 12px; line-height: 16px;">${escapeHtml(t('voice.voiceChatWelcomeDesc'))}</div>
           </div>
         `;
         return;
@@ -6642,7 +7430,7 @@
       container.scrollTop = container.scrollHeight;
     } catch (err) {
       console.error('Error loading voice channel messages:', err);
-      container.innerHTML = '<div style="color: var(--red); font-size: 12px; text-align: center; padding: 20px;">Erro ao carregar mensagens do canal de voz.</div>';
+      container.innerHTML = `<div style="color: var(--red); font-size: 12px; text-align: center; padding: 20px;">${escapeHtml(t('common.error'))}</div>`;
     }
   }
 
@@ -6661,7 +7449,7 @@
 
     const rawName = (isMine && currentUser.username)
       ? currentUser.username
-      : (msg.authorName || msg.author_name || (member ? member.username : 'Membro'));
+      : (msg.authorName || msg.author_name || (member ? member.username : 'Member'));
     const authorName = escapeHtml(rawName);
 
     const rawAvatar = (isMine && currentUser.avatar)
@@ -6686,11 +7474,11 @@
 
     item.innerHTML = `
       <div class="message-actions-bar">
-        <button class="message-action-btn copy-msg-btn" title="Copiar Mensagem">
+        <button class="message-action-btn copy-msg-btn" title="${escapeHtml(t('chat.copyText'))}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
           </svg>
-          <span>Copiar</span>
+          <span>${escapeHtml(t('common.copy'))}</span>
         </button>
       </div>
       <div class="message-avatar" style="width: 32px; height: 32px; font-size: 11px; flex-shrink: 0; background-color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; overflow: hidden;">
@@ -6725,9 +7513,10 @@
   async function sendVoiceChatMessage() {
     const inputEl = document.getElementById('voice-chat-sidebar-input');
     if (!inputEl || !activeVoiceChatChannel) return;
-    const content = inputEl.value.trim();
-    if (!content) return;
+    const rawContent = inputEl.value.trim();
+    if (!rawContent) return;
 
+    const content = convertRawEmoticonsIfEnabled(rawContent);
     inputEl.value = '';
 
     try {
@@ -6740,7 +7529,7 @@
         appendVoiceChatMessage({
           id: savedMsg.id,
           authorId: currentUser ? currentUser.id : 'me',
-          authorName: currentUser ? currentUser.username : 'Eu',
+          authorName: currentUser ? currentUser.username : 'Me',
           authorAvatar: currentUser ? currentUser.avatar : null,
           content: savedMsg.content,
           createdAt: savedMsg.createdAt || new Date().toISOString(),
@@ -7289,14 +8078,14 @@
 
   function promptDisconnectSession() {
     showConfirmDialog({
-      title: 'Tem certeza disso?',
-      message: 'Você confirma que deseja desconectar esta sessão ativa?',
-      confirmText: 'Confirmar',
-      cancelText: 'Cancelar',
+      title: t('common.areYouSure'),
+      message: t('devicesTab.confirmDisconnectOne'),
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       danger: true,
       onConfirm: () => {
         switchSettingsTab('devices');
-        showToastNotification('Sessão desconectada com sucesso!');
+        showToastNotification(t('devicesTab.disconnectedToast'));
       },
     });
   }
@@ -7304,33 +8093,316 @@
 
   function promptDisconnectAllSessions() {
     showConfirmDialog({
-      title: 'Tem certeza disso?',
-      message: 'Você confirma que deseja desconectar todas as outras sessões ativas desta conta em todos os dispositivos?',
-      confirmText: 'Confirmar',
-      cancelText: 'Cancelar',
+      title: t('common.areYouSure'),
+      message: t('devicesTab.confirmDisconnectAll'),
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       danger: true,
       onConfirm: () => {
         switchSettingsTab('devices');
-        showToastNotification('Todas as outras sessões foram desconectadas.');
+        showToastNotification(t('devicesTab.disconnectedAllToast'));
       },
     });
   }
   window.promptDisconnectAllSessions = promptDisconnectAllSessions;
 
-  function promptRevokeApp() {
+  function promptRevokeApp(appId, appName) {
     showConfirmDialog({
-      title: 'Tem certeza disso?',
-      message: 'Você confirma que deseja revogar as permissões deste aplicativo autorizado?',
-      confirmText: 'Confirmar',
-      cancelText: 'Cancelar',
+      title: t('common.areYouSure'),
+      message: t('authorizedAppsTab.confirmRevoke', { app: escapeHtml(appName || 'App') }),
+      confirmText: t('authorizedAppsTab.revokeBtn'),
+      cancelText: t('common.cancel'),
       danger: true,
-      onConfirm: () => {
+      onConfirm: async () => {
+        if (appId) {
+          try {
+            await api(`/users/@me/authorized-apps/${encodeURIComponent(appId)}`, { method: 'DELETE' });
+          } catch (err) {
+            showToastNotification(`${t('common.error')}: ${err.message}`);
+            return;
+          }
+        }
+        await loadAuthorizedApps();
         switchSettingsTab('authorized-apps');
-        showToastNotification('Permissões do aplicativo revogadas com sucesso.');
+        showToastNotification(t('authorizedAppsTab.revokedToast'));
       },
     });
   }
   window.promptRevokeApp = promptRevokeApp;
+
+  // =========================================================================
+  // CONNECTIONS LINKING, OAUTH POPUP & SYNC MODAL HANDLERS
+  // =========================================================================
+  async function initiateProviderConnection(provider, forceSyncModal = false) {
+    if (!BRAND_PROVIDERS[provider]) return;
+
+    if (forceSyncModal) {
+      openConnectionSyncModal(provider);
+      return;
+    }
+
+    try {
+      const res = await api(`/users/@me/connections/${encodeURIComponent(provider)}/authorize`);
+      if (res && res.mode === 'oauth' && res.url) {
+        const width = 560;
+        const height = 680;
+        const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2));
+        const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2));
+        const popup = window.open(
+          res.url,
+          `synccord_oauth_${provider}`,
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+        );
+        if (!popup) {
+          openConnectionSyncModal(provider);
+        }
+        return;
+      }
+      openConnectionSyncModal(provider);
+    } catch {
+      openConnectionSyncModal(provider);
+    }
+  }
+  window.initiateProviderConnection = initiateProviderConnection;
+
+  function openConnectionSyncModal(provider) {
+    const brand = BRAND_PROVIDERS[provider];
+    if (!brand) return;
+
+    const modal = document.getElementById('connection-sync-modal');
+    const iconBox = document.getElementById('connection-modal-brand-icon');
+    const titleEl = document.getElementById('connection-modal-title');
+    const subtitleEl = document.getElementById('connection-modal-subtitle');
+    const providerInput = document.getElementById('connection-modal-provider-input');
+    const quickBox = document.getElementById('connection-logged-account-sync-box');
+    const quickTitle = document.getElementById('connection-logged-sync-title');
+    const quickDesc = document.getElementById('connection-logged-sync-desc');
+    const quickBtn = document.getElementById('btn-quick-sync-logged-account');
+    const fieldLabel = document.getElementById('connection-modal-field-label');
+    const handleInput = document.getElementById('connection-modal-handle-input');
+    const fieldHint = document.getElementById('connection-modal-field-hint');
+    const errorEl = document.getElementById('connection-modal-error');
+    const submitBtn = document.getElementById('connection-modal-submit-btn');
+
+    if (!modal) return;
+    if (providerInput) providerInput.value = provider;
+    if (errorEl) {
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+    }
+    if (iconBox) {
+      iconBox.style.background = brand.bg;
+      iconBox.innerHTML = brand.svg;
+    }
+    if (titleEl) {
+      titleEl.textContent = t('connections.modalTitle', { provider: brand.name });
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = t('connections.modalSubtitle', { provider: brand.name });
+    }
+    if (submitBtn) {
+      submitBtn.textContent = t('connections.linkAccountBtn');
+      submitBtn.disabled = false;
+    }
+
+    const userEmail = currentUser?.email || '';
+    const userHandle = currentUser?.username || '';
+
+    if (quickBox && quickTitle && quickDesc && quickBtn) {
+      quickBox.style.display = 'block';
+      quickBox.style.borderColor = `${brand.color === '#f0f6fc' ? '#5865f2' : brand.color}66`;
+      quickBox.style.background = 'rgba(255, 255, 255, 0.04)';
+      quickBtn.style.background = brand.bg === '#24292F' || brand.bg === '#171a21' ? 'var(--accent)' : brand.bg;
+
+      if (provider === 'youtube') {
+        quickTitle.textContent = t('connections.youtubeSyncTitle');
+        quickDesc.textContent = t('connections.youtubeSyncDesc', { email: userEmail || userHandle });
+        quickBtn.textContent = t('connections.youtubeSyncBtn', { account: userEmail || userHandle });
+      } else {
+        quickTitle.textContent = t('connections.quickSyncTitle', { provider: brand.name });
+        quickDesc.textContent = t('connections.quickSyncDesc', { provider: brand.name, account: userHandle || userEmail });
+        quickBtn.textContent = t('connections.quickSyncBtn', { provider: brand.name, account: userHandle || userEmail });
+      }
+    }
+
+    const placeholders = {
+      youtube: '@seu_canal ou https://youtube.com/@canal',
+      github: 'octocat ou https://github.com/usuario',
+      spotify: 'seu_usuario ou https://open.spotify.com/user/...',
+      steam: 'steamcommunity.com/id/seu_perfil ou SteamID64',
+      twitch: 'seu_canal ou https://twitch.tv/canal',
+    };
+
+    if (fieldLabel) fieldLabel.textContent = t('connections.fieldLabel', { provider: brand.name });
+    if (handleInput) {
+      handleInput.value = '';
+      handleInput.placeholder = placeholders[provider] || '@username';
+    }
+    if (fieldHint) {
+      fieldHint.textContent = t(`connections.hint_${provider}`);
+    }
+
+    modal.style.display = 'flex';
+    modal.classList.add('open');
+    setTimeout(() => handleInput?.focus(), 40);
+  }
+  window.openConnectionSyncModal = openConnectionSyncModal;
+
+  function closeConnectionSyncModal() {
+    const modal = document.getElementById('connection-sync-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.classList.remove('open');
+    }
+  }
+  window.closeConnectionSyncModal = closeConnectionSyncModal;
+
+  async function submitQuickLoggedAccountSync() {
+    const provider = document.getElementById('connection-modal-provider-input')?.value || '';
+    if (!provider || !BRAND_PROVIDERS[provider]) return;
+    const errorEl = document.getElementById('connection-modal-error');
+    const quickBtn = document.getElementById('btn-quick-sync-logged-account');
+
+    try {
+      if (quickBtn) quickBtn.disabled = true;
+      const saved = await api('/users/@me/connections', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider,
+          syncLoggedAccount: true,
+          showOnProfile: true,
+        }),
+      });
+      closeConnectionSyncModal();
+      await loadUserConnections();
+      switchSettingsTab('connections');
+      showToastNotification(
+        t('connections.linkedSuccess', {
+          provider: BRAND_PROVIDERS[provider].name,
+          account: saved?.providerUsername || currentUser?.username || '',
+        }),
+      );
+    } catch (err) {
+      if (errorEl) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = err.message || t('common.error');
+      }
+    } finally {
+      if (quickBtn) quickBtn.disabled = false;
+    }
+  }
+  window.submitQuickLoggedAccountSync = submitQuickLoggedAccountSync;
+
+  async function submitConnectionSyncModal(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const provider = document.getElementById('connection-modal-provider-input')?.value || '';
+    const handleInput = document.getElementById('connection-modal-handle-input');
+    const errorEl = document.getElementById('connection-modal-error');
+    const submitBtn = document.getElementById('connection-modal-submit-btn');
+    const handle = (handleInput?.value || '').trim();
+
+    if (!provider || !BRAND_PROVIDERS[provider] || !handle) return;
+
+    try {
+      if (submitBtn) submitBtn.disabled = true;
+      const saved = await api('/users/@me/connections', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider,
+          accountHandle: handle,
+          showOnProfile: true,
+        }),
+      });
+      closeConnectionSyncModal();
+      await loadUserConnections();
+      switchSettingsTab('connections');
+      showToastNotification(
+        t('connections.linkedSuccess', {
+          provider: BRAND_PROVIDERS[provider].name,
+          account: saved?.providerUsername || handle,
+        }),
+      );
+    } catch (err) {
+      if (errorEl) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = err.message || t('common.error');
+      }
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+  window.submitConnectionSyncModal = submitConnectionSyncModal;
+
+  async function toggleConnectionVisibility(provider, showOnProfile) {
+    try {
+      await api(`/users/@me/connections/${encodeURIComponent(provider)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ showOnProfile: Boolean(showOnProfile) }),
+      });
+      await loadUserConnections();
+      showToastNotification(t('common.saved'));
+    } catch (err) {
+      showToastNotification(`${t('common.error')}: ${err.message}`);
+    }
+  }
+  window.toggleConnectionVisibility = toggleConnectionVisibility;
+
+  function promptUnlinkConnection(provider, accountName) {
+    const brand = BRAND_PROVIDERS[provider];
+    const providerLabel = brand ? brand.name : provider;
+    showConfirmDialog({
+      title: t('connections.unlinkConfirmTitle', { provider: providerLabel }),
+      message: t('connections.unlinkConfirmMsg', {
+        provider: escapeHtml(providerLabel),
+        account: escapeHtml(accountName || ''),
+      }),
+      confirmText: t('connections.unlinkBtn'),
+      cancelText: t('common.cancel'),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api(`/users/@me/connections/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+          await loadUserConnections();
+          switchSettingsTab('connections');
+          showToastNotification(t('connections.unlinkedToast', { provider: providerLabel }));
+        } catch (err) {
+          showToastNotification(`${t('common.error')}: ${err.message}`);
+        }
+      },
+    });
+  }
+  window.promptUnlinkConnection = promptUnlinkConnection;
+
+  function bindSettingsTextImages() {
+    const showMediaEl = document.getElementById('toggle-ti-show-images-media');
+    const convertEmoticonsEl = document.getElementById('toggle-ti-convert-emoticons');
+    const linkPreviewsEl = document.getElementById('toggle-ti-show-link-previews');
+
+    if (showMediaEl) {
+      showMediaEl.onchange = (e) => {
+        textImagesSettings.showImagesMedia = Boolean(e.target.checked);
+        saveTextImagesSettings();
+        reapplyTextImagesSettingsToDOM();
+        showToastNotification(t('common.saved'));
+      };
+    }
+    if (convertEmoticonsEl) {
+      convertEmoticonsEl.onchange = (e) => {
+        textImagesSettings.convertEmoticons = Boolean(e.target.checked);
+        saveTextImagesSettings();
+        reapplyTextImagesSettingsToDOM();
+        showToastNotification(t('common.saved'));
+      };
+    }
+    if (linkPreviewsEl) {
+      linkPreviewsEl.onchange = (e) => {
+        textImagesSettings.showLinkPreviews = Boolean(e.target.checked);
+        saveTextImagesSettings();
+        reapplyTextImagesSettingsToDOM();
+        showToastNotification(t('common.saved'));
+      };
+    }
+  }
 
   function switchSettingsTab(tabKey) {
     if (tabKey === 'profiles') {
@@ -7358,6 +8430,22 @@
 
     if (tabKey === 'voice-video') {
       bindSettingsVoiceVideo();
+    } else if (tabKey === 'text-images') {
+      bindSettingsTextImages();
+    } else if (tabKey === 'connections') {
+      loadUserConnections().then(() => {
+        const activeEl = document.querySelector('.settings-nav-item.active');
+        if (activeEl && activeEl.getAttribute('data-tab') === 'connections' && pane) {
+          pane.innerHTML = renderSettingsTabContent('connections');
+        }
+      });
+    } else if (tabKey === 'authorized-apps') {
+      loadAuthorizedApps().then(() => {
+        const activeEl = document.querySelector('.settings-nav-item.active');
+        if (activeEl && activeEl.getAttribute('data-tab') === 'authorized-apps' && pane) {
+          pane.innerHTML = renderSettingsTabContent('authorized-apps');
+        }
+      });
     }
   }
   window.switchSettingsTab = switchSettingsTab;
@@ -7400,7 +8488,7 @@
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.username')} // USERNAME</div>
+                <div class="settings-info-label">${t('myAccount.username')}</div>
                 <div class="settings-info-value" style="font-family: var(--font-mono);">${username}#${discriminator}</div>
               </div>
               <button class="settings-btn-inline" onclick="openEditUsernameModal()">${t('common.edit')}</button>
@@ -7408,7 +8496,7 @@
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.email')} // CREDENCIAL</div>
+                <div class="settings-info-label">${t('myAccount.email')}</div>
                 <div class="settings-info-value" style="font-family: var(--font-mono);">${email}</div>
               </div>
               <button class="settings-btn-inline" onclick="alert('${t('myAccount.email')}: ' + '${email}')">${t('myAccount.reveal')}</button>
@@ -7416,7 +8504,7 @@
 
             <div class="settings-user-info-row">
               <div>
-                <div class="settings-info-label">${t('myAccount.phone')} // CONTATO</div>
+                <div class="settings-info-label">${t('myAccount.phone')}</div>
                 <div class="settings-info-value" style="color: var(--tag-concrete); font-family: var(--font-mono);">${t('myAccount.noPhone')}</div>
               </div>
               <button class="settings-btn-inline" onclick="alert('${t('myAccount.noPhone')}')">${t('myAccount.add')}</button>
@@ -7461,7 +8549,7 @@
 
       case 'profiles':
         return `
-          <div class="settings-pane-title">${t('profiles.title')} // IDENTIDADE VISUAL</div>
+          <div class="settings-pane-title">${t('profiles.title')}</div>
           <div class="settings-section-subtitle">${t('profiles.subtitle')}</div>
           
           <!-- BOX DE CAIXA 1: IDENTIDADE VISUAL & AVATAR -->
@@ -7473,12 +8561,12 @@
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div class="brand-badge">
-                <i class="fa-solid fa-tag"></i> IDENTIDADE // AVATAR &amp; BANNER
+                <i class="fa-solid fa-tag"></i> ${t('profiles.identityBadge')}
               </div>
               <div class="stat-pill spike">
                 <i class="fa-solid fa-bolt"></i>
                 <span>STATUS:</span>
-                <span class="num">ONLINE</span>
+                <span class="num">${escapeHtml(t('status.online').toUpperCase())}</span>
               </div>
             </div>
 
@@ -7525,32 +8613,32 @@
 
             <!-- Banner Color & Gradient Options -->
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.bannerColor')} // BANNER COLOR &amp; GRADIENTS</label>
+              <label class="form-label">${t('profiles.bannerColor')}</label>
               
               <!-- Hidden input to hold current chosen banner style (hex or linear-gradient) -->
               <input type="hidden" id="profile-banner-color-val" value="${escapeHtml(currentUser?.bannerColor || 'linear-gradient(135deg, #7c3aed, #c084fc)')}" />
 
               <div style="margin-bottom: 10px; font-size: 12px; font-family: var(--font-mono); color: var(--tag-concrete);">
-                ESCOLHA UMA OPÇÃO EM GRADIENTE OU DEFINA UMA COR SÓLIDA:
+                ${t('profiles.bannerColorDesc')}
               </div>
 
               <!-- Gradient Preset Swatches Grid -->
               <div class="banner-gradient-presets" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
                 ${[
-                  { grad: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: 'Lilás & Roxo' },
-                  { grad: 'linear-gradient(135deg, #4c1d95, #9333ea, #f472b6)', name: 'Ciber Violeta' },
-                  { grad: 'linear-gradient(135deg, #240046, #7c3aed, #d8b4fe)', name: 'Ametista Neon' },
-                  { grad: 'linear-gradient(135deg, #090314, #4c1d95, #a855f7)', name: 'Abismo Púrpura' },
-                  { grad: 'linear-gradient(135deg, #c084fc, #e9d5ff, #f472b6)', name: 'Lilás Floral' },
+                  { grad: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: t('auth.themeLilac') },
+                  { grad: 'linear-gradient(135deg, #4c1d95, #9333ea, #f472b6)', name: t('auth.themeCyber') },
+                  { grad: 'linear-gradient(135deg, #240046, #7c3aed, #d8b4fe)', name: t('auth.themeAmethyst') },
+                  { grad: 'linear-gradient(135deg, #090314, #4c1d95, #a855f7)', name: 'Deep Violet' },
+                  { grad: 'linear-gradient(135deg, #c084fc, #e9d5ff, #f472b6)', name: 'Floral Lilac' },
                   { grad: 'linear-gradient(135deg, #00b0f4, #818cf8, #c084fc)', name: 'Aurora Neon' },
                   { grad: 'linear-gradient(135deg, #ff0031, #7928ca)', name: 'Cyberpunk' },
-                  { grad: 'linear-gradient(135deg, #18191c, #2f3136)', name: 'Meia-noite' },
+                  { grad: 'linear-gradient(135deg, #18191c, #2f3136)', name: t('appearanceTab.themeMidnight') },
                 ].map((g) => `
                   <div class="banner-gradient-pill ${(currentUser?.bannerColor || '').toLowerCase() === g.grad.toLowerCase() ? 'active' : ''}" 
                        style="background: ${g.grad}; cursor: pointer; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.8); border: 2px solid transparent; transition: all 0.15s ease;"
-                       title="${g.name}"
+                       title="${escapeHtml(g.name)}"
                        onclick="selectBannerGradient('${g.grad}', this)">
-                    ${g.name}
+                    ${escapeHtml(g.name)}
                   </div>
                 `).join('')}
               </div>
@@ -7560,7 +8648,7 @@
                        onchange="handleBannerSolidColorChange(this.value)"
                        style="border: 1px solid var(--tag-border); width: 44px; height: 34px; border-radius: 6px; cursor: pointer; background: transparent;" />
                 <span style="font-size: 12.5px; font-family: var(--font-mono); color: var(--tag-concrete);">
-                  Ou escolha uma cor sólida personalizada
+                  ${t('profiles.customSolidColor')}
                 </span>
               </div>
             </div>
@@ -7575,23 +8663,23 @@
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div class="brand-badge" style="background: var(--tag-orange);">
-                <i class="fa-solid fa-id-badge"></i> DADOS DO PERFIL // BIO &amp; APRESENTAÇÃO
+                <i class="fa-solid fa-id-badge"></i> ${t('profiles.bioBadge')}
               </div>
             </div>
 
             <!-- Profile Info Fields -->
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.displayName')} // DISPLAY NAME</label>
+              <label class="form-label">${t('profiles.displayName')}</label>
               <input type="text" class="form-input" id="profile-display-name" value="${username}" placeholder="${t('profiles.displayNamePlaceholder')}" onkeydown="if(event.key==='Enter') promptSaveProfileChanges()" />
             </div>
 
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">${t('profiles.pronouns')} // PRONOUNS</label>
+              <label class="form-label">${t('profiles.pronouns')}</label>
               <input type="text" class="form-input" id="profile-pronouns" value="${escapeHtml(currentUser?.pronouns || '')}" placeholder="${t('profiles.pronounsPlaceholder')}" />
             </div>
 
             <div class="form-group" style="margin-bottom: 20px;">
-              <label class="form-label">${t('profiles.bio')} // BIOGRAFIA &amp; RECADOS</label>
+              <label class="form-label">${t('profiles.bio')}</label>
               <textarea class="form-input" id="profile-bio" rows="3" style="height: auto; padding: 12px;" placeholder="${t('profiles.bioPlaceholder')}">${escapeHtml(currentUser?.bio || '')}</textarea>
             </div>
 
@@ -7599,12 +8687,12 @@
               <button class="btn-primary" style="padding: 10px 24px;" onclick="promptSaveProfileChanges()">
                 <i class="fa-solid fa-floppy-disk"></i> ${t('profiles.saveChanges')}
               </button>
-              <span id="profile-save-status" style="font-family: var(--font-mono); font-size: 13px; color: var(--tag-green); display: none;">✓ ${t('profiles.savedSuccess')}</span>
+              <span id="profile-save-status" style="font-family: var(--font-mono); font-size: 13px; color: var(--tag-green); display: none;">${t('profiles.savedSuccess')}</span>
             </div>
           </div>
 
-          <!-- BOX DE CAIXA 3: DIAGNÓSTICO ESTRATÉGICO & TELEMETRIA -->
-          <div class="settings-card" style="position: relative;">
+          <!-- BOX DE CAIXA 3: DIAGNÓSTICO ESTRATÉGICO & TELEMETRIA (Oculto / invisível conforme solicitado, preservado no código) -->
+          <div class="settings-card" id="profile-telemetry-diagnostics-card" style="position: relative; display: none;" aria-hidden="true">
             <div class="swiss-corner swiss-tl"></div>
             <div class="swiss-corner swiss-tr"></div>
             <div class="swiss-corner swiss-bl"></div>
@@ -7655,171 +8743,235 @@
         return `
           <div class="settings-pane-title">${t('settings.privacySafety')}</div>
           
-          <div class="settings-section-subtitle">MENSAGENS DIRETAS SEGURAS</div>
+          <div class="settings-section-subtitle">${t('privacyTab.safeDmSubtitle')}</div>
           <div class="settings-card">
             <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
-              Analise automaticamente mensagens diretas para proteger sua conta contra spam e mídias indesejadas.
+              ${t('privacyTab.safeDmDesc')}
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 10px;">
               <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 10px; background-color: var(--bg-secondary); border-radius: 6px;">
                 <input type="radio" name="dm-filter" checked />
                 <div>
-                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">🛡️ Mantenha-me em segurança</div>
-                  <div style="font-size: 12px; color: var(--text-muted);">Verificar mensagens diretas de todos os usuários.</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">🛡️ ${t('privacyTab.keepMeSafeTitle')}</div>
+                  <div style="font-size: 12px; color: var(--text-muted);">${t('privacyTab.keepMeSafeDesc')}</div>
                 </div>
               </label>
               
               <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 10px; background-color: var(--bg-secondary); border-radius: 6px;">
                 <input type="radio" name="dm-filter" />
                 <div>
-                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">👥 Meus amigos são confiáveis</div>
-                  <div style="font-size: 12px; color: var(--text-muted);">Verificar mensagens de todos, exceto de amigos adicionados.</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">👥 ${t('privacyTab.friendsNiceTitle')}</div>
+                  <div style="font-size: 12px; color: var(--text-muted);">${t('privacyTab.friendsNiceDesc')}</div>
                 </div>
               </label>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">QUEM PODE TE ENVIAR SOLICITAÇÕES DE AMIZADE</div>
+          <div class="settings-section-subtitle">${t('privacyTab.friendRequestsSubtitle')}</div>
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Todos</div>
-                <div class="discord-toggle-desc">Qualquer pessoa na plataforma pode enviar pedidos de amizade.</div>
+                <div class="discord-toggle-title">${t('privacyTab.everyoneTitle')}</div>
+                <div class="discord-toggle-desc">${t('privacyTab.everyoneDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Amigos de Amigos</div>
-                <div class="discord-toggle-desc">Apenas conexões mútuas podem solicitar amizade.</div>
+                <div class="discord-toggle-title">${t('privacyTab.friendsOfFriendsTitle')}</div>
+                <div class="discord-toggle-desc">${t('privacyTab.friendsOfFriendsDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Membros de Servidores</div>
-                <div class="discord-toggle-desc">Usuários que compartilham servidores com você.</div>
+                <div class="discord-toggle-title">${t('privacyTab.serverMembersTitle')}</div>
+                <div class="discord-toggle-desc">${t('privacyTab.serverMembersDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
           </div>
         `;
 
-      case 'authorized-apps':
+      case 'authorized-apps': {
+        const appsList = Array.isArray(userAuthorizedApps) ? userAuthorizedApps : [];
         return `
           <div class="settings-pane-title">${t('settings.authorizedApps')}</div>
-          <div class="settings-section-subtitle">APLICAÇÕES OAUTH2 E BOTS CONECTADOS</div>
+          <div class="settings-section-subtitle">${t('authorizedAppsTab.subtitle')}</div>
           
-          <div class="settings-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; border-radius: 50%; background: #5865f2; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">ADM</div>
-                <div>
-                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">System Admin Bot</div>
-                  <div style="font-size: 12px; color: var(--text-muted);">Permissões: Conectar em voz, Transmitir áudio, Gerenciar presença</div>
-                </div>
-              </div>
-              <button class="settings-btn-inline" style="color: var(--red);" onclick="promptRevokeApp()">Revogar</button>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; border-radius: 50%; background: #23a55a; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">API</div>
-                <div>
-                  <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">SyncCord Webhook Integrator</div>
-                  <div style="font-size: 12px; color: var(--text-muted);">Permissões: Enviar mensagens de status e chamadas</div>
-                </div>
-              </div>
-              <button class="settings-btn-inline" style="color: var(--red);" onclick="promptRevokeApp()">Revogar</button>
-            </div>
+          <div class="settings-card" id="authorized-apps-list-card">
+            ${
+              appsList.length === 0
+                ? `
+                  <div style="padding: 28px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                    <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(88, 101, 242, 0.14); color: var(--accent-solid, #5865f2); display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                      <i class="fa-solid fa-plug-circle-check"></i>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 700; color: var(--text-header);">${t('authorizedAppsTab.emptyTitle')}</div>
+                    <div style="font-size: 13px; color: var(--text-muted); max-width: 460px; line-height: 1.5;">
+                      ${t('authorizedAppsTab.emptyDesc')}
+                    </div>
+                  </div>
+                `
+                : appsList
+                    .map(
+                      (app, idx) => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; ${idx < appsList.length - 1 ? 'border-bottom: 1px solid rgba(255,255,255,0.06);' : ''}">
+                          <div style="display: flex; align-items: center; gap: 12px;">
+                            ${
+                              app.appIcon
+                                ? `<img src="${escapeHtml(app.appIcon)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />`
+                                : `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">${escapeHtml(getInitials(app.appName || 'APP'))}</div>`
+                            }
+                            <div>
+                              <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">${escapeHtml(app.appName)}</div>
+                              <div style="font-size: 12px; color: var(--text-muted);">${t('authorizedAppsTab.permissionsPrefix')}: ${escapeHtml((app.scopes || []).join(', ') || app.description || 'OAuth2')}</div>
+                            </div>
+                          </div>
+                          <button class="settings-btn-inline" style="color: var(--red);" onclick="promptRevokeApp('${escapeHtml(app.id)}', '${escapeHtml(app.appName)}')">${t('authorizedAppsTab.revokeBtn')}</button>
+                        </div>
+                      `,
+                    )
+                    .join('')
+            }
           </div>
         `;
+      }
 
       case 'devices':
         return `
           <div class="settings-pane-title">${t('settings.devices')}</div>
-          <div class="settings-section-subtitle">SESSÕES ATIVAS CONECTADAS</div>
+          <div class="settings-section-subtitle">${t('devicesTab.subtitle')}</div>
           
           <div class="settings-card">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">💻 SyncCord Desktop (Windows 11)</div>
-                <div style="font-size: 12px; color: var(--green); font-weight: 600; margin-top: 2px;">● Ativo agora (Sessão Atual)</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">IP: 127.0.0.1 • Cliente Rust Nativo (Wry / Tao)</div>
+                <div style="font-size: 12px; color: var(--green); font-weight: 600; margin-top: 2px;">● ${t('devicesTab.activeNow')}</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">IP: 127.0.0.1 • ${t('devicesTab.rustClientDesc')}</div>
               </div>
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
               <div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">🌐 Google Chrome / Web App</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Última sincronização há 18 minutos</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">São Paulo, Brasil • Navegador Web</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">${t('devicesTab.lastSync')}</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('devicesTab.webBrowserDesc')}</div>
               </div>
-              <button class="settings-btn-inline" onclick="promptDisconnectSession()">Desconectar</button>
+              <button class="settings-btn-inline" onclick="promptDisconnectSession()">${t('devicesTab.disconnectBtn')}</button>
             </div>
           </div>
 
           <button class="settings-btn-inline" style="background-color: var(--red); color: white;" onclick="promptDisconnectAllSessions()">
-            Desconectar de todas as outras sessões
+            ${t('devicesTab.disconnectAllBtn')}
           </button>
         `;
 
-      case 'connections':
+      case 'connections': {
+        const providerOrder = ['youtube', 'github', 'spotify', 'steam', 'twitch'];
+        const connectedByProvider = new Map(
+          (userConnections || []).map((c) => [c.provider, c]),
+        );
+        const linkedItems = (userConnections || []).filter((c) => BRAND_PROVIDERS[c.provider]);
+
         return `
           <div class="settings-pane-title">${t('settings.connections')}</div>
-          <div class="settings-section-subtitle">VINCULE SUAS CONTAS AO PERFIL DO SYNCCORD</div>
+          <div class="settings-section-subtitle">${t('connections.subtitle')}</div>
           
           <div class="settings-card">
-            <div class="connections-grid">
-              <button class="connection-item-btn" onclick="window.alert('Conta Steam vinculada com sucesso!')">
-                <span style="font-size: 20px;">🎮</span>
-                <span>Steam</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta Spotify vinculada com sucesso!')">
-                <span style="font-size: 20px;">🎵</span>
-                <span>Spotify</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta GitHub vinculada com sucesso!')">
-                <span style="font-size: 20px;">🐙</span>
-                <span>GitHub</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta YouTube vinculada com sucesso!')">
-                <span style="font-size: 20px;">📺</span>
-                <span>YouTube</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta Twitch vinculada com sucesso!')">
-                <span style="font-size: 20px;">🟣</span>
-                <span>Twitch</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta Xbox vinculada com sucesso!')">
-                <span style="font-size: 20px;">🟩</span>
-                <span>Xbox</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta PlayStation vinculada com sucesso!')">
-                <span style="font-size: 20px;">🟦</span>
-                <span>PlayStation</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta Reddit vinculada com sucesso!')">
-                <span style="font-size: 20px;">🤖</span>
-                <span>Reddit</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta X (Twitter) vinculada com sucesso!')">
-                <span style="font-size: 20px;">✖️</span>
-                <span>X / Twitter</span>
-              </button>
-              <button class="connection-item-btn" onclick="window.alert('Conta Epic Games vinculada com sucesso!')">
-                <span style="font-size: 20px;">🕹️</span>
-                <span>Epic Games</span>
-              </button>
+            <div style="font-size: 13px; color: var(--text-normal); margin-bottom: 4px;">
+              ${t('connections.addAccountDesc')}
             </div>
-            <div style="font-size: 12px; color: var(--text-muted);">
-              As contas vinculadas podem exibir sua atividade, músicas e jogos em execução no seu cartão de perfil.
+
+            <div class="connections-providers-grid">
+              ${providerOrder
+                .map((key) => {
+                  const p = BRAND_PROVIDERS[key];
+                  const isLinked = connectedByProvider.has(key);
+                  return `
+                    <button type="button"
+                            class="connection-provider-card ${isLinked ? 'is-connected' : ''}"
+                            style="--brand-color: ${p.color}; --brand-bg: ${p.bg};"
+                            title="${escapeHtml(t('connections.clickToConnectTitle', { provider: p.name }))}"
+                            onclick="initiateProviderConnection('${p.id}')">
+                      ${isLinked ? '<span class="connection-connected-badge" title="✓">✓</span>' : ''}
+                      <span class="connection-provider-icon-wrap">${p.svg}</span>
+                      <span>${escapeHtml(p.name)}</span>
+                    </button>
+                  `;
+                })
+                .join('')}
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45;">
+              ${t('connections.privacyFooterNote')}
             </div>
           </div>
+
+          <div class="settings-section-subtitle">${t('connections.linkedAccountsSubtitle')}</div>
+          ${
+            linkedItems.length === 0
+              ? `
+                <div class="settings-card" style="text-align: center; padding: 24px 16px;">
+                  <div style="font-size: 14px; font-weight: 700; color: var(--text-header); margin-bottom: 4px;">${t('connections.noConnectionsTitle')}</div>
+                  <div style="font-size: 12.5px; color: var(--text-muted);">${t('connections.noConnectionsDesc')}</div>
+                </div>
+              `
+              : `
+                <div class="connected-accounts-list">
+                  ${linkedItems
+                    .map((conn) => {
+                      const p = BRAND_PROVIDERS[conn.provider];
+                      const showChecked = conn.showOnProfile !== false;
+                      return `
+                        <div class="connected-account-card">
+                          <div class="connected-account-top">
+                            <div class="connected-account-identity">
+                              <div class="connection-provider-icon-wrap" style="--brand-bg: ${p.bg}; width: 42px; height: 42px;">
+                                ${p.svg}
+                              </div>
+                              <div class="connected-account-details">
+                                <div class="connected-account-name-row">
+                                  <span class="connected-account-name">${escapeHtml(conn.providerUsername)}</span>
+                                  <span class="connected-account-provider-tag">${escapeHtml(p.name)} ✓</span>
+                                </div>
+                                ${
+                                  conn.profileUrl
+                                    ? `<a href="${escapeHtml(conn.profileUrl)}" target="_blank" rel="noopener noreferrer" class="connected-account-link">${escapeHtml(conn.profileUrl)}</a>`
+                                    : ''
+                                }
+                              </div>
+                            </div>
+
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <button type="button" class="settings-btn-inline" onclick="initiateProviderConnection('${p.id}', true)">
+                                ${t('connections.resyncBtn')}
+                              </button>
+                              <button type="button" class="settings-btn-inline" style="color: var(--red);" onclick="promptUnlinkConnection('${p.id}', '${escapeHtml(conn.providerUsername)}')">
+                                ${t('connections.unlinkBtn')}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div class="connected-account-bottom">
+                            <span style="font-size: 13px; font-weight: 600; color: var(--text-normal);">${t('connections.displayOnProfile')}</span>
+                            <label class="discord-switch">
+                              <input type="checkbox" ${showChecked ? 'checked' : ''} onchange="toggleConnectionVisibility('${p.id}', this.checked)" />
+                              <span class="discord-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                      `;
+                    })
+                    .join('')}
+                </div>
+              `
+          }
         `;
+      }
 
       case 'nitro':
       case 'server-boost':
@@ -7827,150 +8979,149 @@
       case 'gift-inventory':
       case 'billing':
         return `
-          <div class="settings-pane-title">SyncCord Nitro & Faturamento</div>
+          <div class="settings-pane-title">${t('nitroTab.title')}</div>
           
           <div class="settings-card" style="background: linear-gradient(135deg, rgba(138,35,135,0.4), rgba(233,64,87,0.4)); border: 1px solid rgba(233,64,87,0.6);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
               <div>
                 <div style="font-size: 22px; font-weight: 800; color: white;">SyncCord Nitro</div>
-                <div style="font-size: 13px; color: #dbdee1; margin-top: 4px;">Desbloqueie benefícios premium em todos os servidores.</div>
+                <div style="font-size: 13px; color: #dbdee1; margin-top: 4px;">${t('nitroTab.bannerSubtitle')}</div>
               </div>
-              <button class="btn-primary" style="background: #f27121; padding: 8px 18px; font-weight: 700;" onclick="window.alert('Simulação de Assinatura Nitro ativada!')">
-                Assinar Nitro
+              <button class="btn-primary" style="background: #f27121; padding: 8px 18px; font-weight: 700;" onclick="showToastNotification('${escapeHtml(t('nitroTab.subscribeToast'))}')">
+                ${t('nitroTab.subscribeBtn')}
               </button>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">VANTAGENS EXCLUSIVAS DO NITRO</div>
+          <div class="settings-section-subtitle">${t('nitroTab.perksSubtitle')}</div>
           <div class="settings-card">
             <div style="display: flex; flex-direction: column; gap: 12px; font-size: 14px;">
-              <div style="display: flex; align-items: center; gap: 10px;">✨ <strong>Transmissão em Tela Cheia HD:</strong> Compartilhe telas em 1080p a 60 FPS ou 4K.</div>
-              <div style="display: flex; align-items: center; gap: 10px;">📦 <strong>Upload de Arquivos Gigantes:</strong> Envie arquivos, vídeos e mídias de até 500 MB.</div>
-              <div style="display: flex; align-items: center; gap: 10px;">🚀 <strong>2 Impulsos de Servidor:</strong> Aumente o nível do servidor da sua comunidade.</div>
-              <div style="display: flex; align-items: center; gap: 10px;">🎨 <strong>Temas e Perfis Exclusivos:</strong> Cores customizadas e banners animados.</div>
+              <div style="display: flex; align-items: center; gap: 10px;">✨ <span>${t('nitroTab.perkStreamHtml')}</span></div>
+              <div style="display: flex; align-items: center; gap: 10px;">📦 <span>${t('nitroTab.perkUploadHtml')}</span></div>
+              <div style="display: flex; align-items: center; gap: 10px;">🚀 <span>${t('nitroTab.perkBoostHtml')}</span></div>
+              <div style="display: flex; align-items: center; gap: 10px;">🎨 <span>${t('nitroTab.perkThemesHtml')}</span></div>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">MÉTODOS DE PAGAMENTO E HISTÓRICO</div>
+          <div class="settings-section-subtitle">${t('nitroTab.billingSubtitle')}</div>
           <div class="settings-card">
             <div class="settings-user-info-row" style="margin-bottom: 0;">
               <div>
-                <div class="settings-info-label">Método Padrão</div>
-                <div class="settings-info-value">💳 Cartão de Crédito com final •••• 4242</div>
+                <div class="settings-info-label">${t('nitroTab.defaultMethodLabel')}</div>
+                <div class="settings-info-value">💳 ${t('nitroTab.cardEnding')} •••• 4242</div>
               </div>
-              <button class="settings-btn-inline" onclick="window.alert('Gerenciar pagamentos')">Gerenciar</button>
+              <button class="settings-btn-inline" onclick="showToastNotification('${escapeHtml(t('common.saved'))}')">${t('nitroTab.manageBtn')}</button>
             </div>
           </div>
         `;
 
       case 'appearance': {
         const themeList = [
-          { id: 'dark', name: 'Escuro (Padrão)', previewClass: 'theme-preview-dark', previewText: 'Escuro' },
-          { id: 'light', name: 'Claro', previewClass: 'theme-preview-light', previewText: 'Claro' },
-          { id: 'midnight', name: 'Meia-noite (AMOLED)', previewClass: 'theme-preview-midnight', previewText: 'Meia-noite' },
-          { id: 'navy', name: 'Azul Marinho', previewClass: 'theme-preview-navy', previewText: 'Marinho' },
-          { id: 'ruby', name: 'Rubi', previewClass: 'theme-preview-ruby', previewText: 'Rubi' },
-          { id: 'forest', name: 'Floresta', previewClass: 'theme-preview-forest', previewText: 'Floresta' },
+          { id: 'dark', name: t('appearanceTab.themeDarkDesc'), previewClass: 'theme-preview-dark', previewText: t('appearanceTab.themeDark') },
+          { id: 'light', name: t('appearanceTab.themeLight'), previewClass: 'theme-preview-light', previewText: t('appearanceTab.themeLight') },
+          { id: 'midnight', name: t('appearanceTab.themeMidnightDesc'), previewClass: 'theme-preview-midnight', previewText: t('appearanceTab.themeMidnight') },
+          { id: 'navy', name: t('appearanceTab.themeNavy'), previewClass: 'theme-preview-navy', previewText: t('appearanceTab.themeNavy') },
+          { id: 'ruby', name: t('appearanceTab.themeRuby'), previewClass: 'theme-preview-ruby', previewText: t('appearanceTab.themeRuby') },
+          { id: 'forest', name: t('appearanceTab.themeForest'), previewClass: 'theme-preview-forest', previewText: t('appearanceTab.themeForest') },
         ];
 
         const solidAccentList = [
           { color: '#5865f2', name: 'Blurple' },
-          { color: '#23a55a', name: 'Esmeralda' },
+          { color: '#23a55a', name: 'Emerald' },
           { color: '#f23f43', name: 'Coral' },
-          { color: '#f0b232', name: 'Âmbar' },
-          { color: '#00b0f4', name: 'Ciano' },
+          { color: '#f0b232', name: 'Amber' },
+          { color: '#00b0f4', name: 'Cyan' },
           { color: '#eb459e', name: 'Magenta' },
         ];
 
         const gradientAccentList = [
-          { color: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: 'Lilás & Roxo', solid: '#7c3aed' },
-          { color: 'linear-gradient(135deg, #9333ea, #f472b6)', name: 'Violeta & Rosa', solid: '#9333ea' },
-          { color: 'linear-gradient(135deg, #4c1d95, #a855f7)', name: 'Ametista Neon', solid: '#8b5cf6' },
-          { color: 'linear-gradient(135deg, #00b0f4, #818cf8)', name: 'Aurora Ciano', solid: '#00b0f4' },
-          { color: 'linear-gradient(135deg, #f0b232, #eb459e)', name: 'Pôr do Sol Ciber', solid: '#f0b232' },
+          { color: 'linear-gradient(135deg, #7c3aed, #c084fc)', name: t('auth.themeLilac'), solid: '#7c3aed' },
+          { color: 'linear-gradient(135deg, #9333ea, #f472b6)', name: t('auth.themeCyber'), solid: '#9333ea' },
+          { color: 'linear-gradient(135deg, #4c1d95, #a855f7)', name: t('auth.themeAmethyst'), solid: '#8b5cf6' },
+          { color: 'linear-gradient(135deg, #00b0f4, #818cf8)', name: 'Cyan Aurora', solid: '#00b0f4' },
+          { color: 'linear-gradient(135deg, #f0b232, #eb459e)', name: 'Cyber Sunset', solid: '#f0b232' },
         ];
 
         const allAccents = [...solidAccentList, ...gradientAccentList];
         const activeAccentObj = allAccents.find((a) => a.color.toLowerCase() === pendingAppearanceAccent.toLowerCase());
-        const activeAccentName = activeAccentObj ? activeAccentObj.name : 'Personalizada';
+        const activeAccentName = activeAccentObj ? activeAccentObj.name : t('appearanceTab.customAccent');
 
         return `
           <div class="settings-pane-title">${t('settings.appearance')}</div>
           
-          <div class="settings-section-subtitle">TEMA DO APLICATIVO</div>
+          <div class="settings-section-subtitle">${t('appearanceTab.appThemeSubtitle')}</div>
           <div class="theme-selector-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;">
             ${themeList.map((theme) => `
               <div class="theme-card ${pendingAppearanceTheme === theme.id ? 'active' : ''}" id="theme-card-${theme.id}" onclick="selectAppearanceTheme('${theme.id}')">
-                <div class="theme-preview-box ${theme.previewClass}">${theme.previewText}</div>
-                <div style="font-size: 13px; font-weight: 600; color: var(--text-header); margin-top: 8px;">${theme.name}</div>
+                <div class="theme-preview-box ${theme.previewClass}">${escapeHtml(theme.previewText)}</div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-header); margin-top: 8px;">${escapeHtml(theme.name)}</div>
               </div>
             `).join('')}
           </div>
 
-          <div class="settings-section-subtitle">CORES DE DESTAQUE // SÓLIDAS</div>
+          <div class="settings-section-subtitle">${t('appearanceTab.solidAccentsSubtitle')}</div>
           <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 18px; padding: 14px 18px; background-color: var(--bg-secondary); border-radius: 8px; flex-wrap: wrap;">
             ${solidAccentList.map((a) => `
               <div class="accent-color-circle ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? 'active' : ''}" 
                    id="accent-circle-${a.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}" 
                    style="background: ${a.color};" 
-                   title="${a.name} (${a.color})"
-                   onclick="selectAccentColor('${a.color}', '${a.name}')">
+                   title="${escapeHtml(a.name)} (${a.color})"
+                   onclick="selectAccentColor('${a.color}', '${escapeHtml(a.name)}')">
                 ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' : ''}
               </div>
             `).join('')}
           </div>
 
-          <div class="settings-section-subtitle">OPÇÕES EM GRADIENTE // NEXT-GEN</div>
+          <div class="settings-section-subtitle">${t('appearanceTab.gradientAccentsSubtitle')}</div>
           <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 24px; padding: 14px 18px; background-color: var(--bg-secondary); border-radius: 8px; flex-wrap: wrap;">
             ${gradientAccentList.map((a) => `
               <div class="accent-color-circle gradient ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? 'active' : ''}" 
                    id="accent-circle-${a.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}" 
                    style="background: ${a.color};" 
-                   title="${a.name}"
-                   onclick="selectAccentColor('${a.color}', '${a.name}')">
+                   title="${escapeHtml(a.name)}"
+                   onclick="selectAccentColor('${a.color}', '${escapeHtml(a.name)}')">
                 ${pendingAppearanceAccent.toLowerCase() === a.color.toLowerCase() ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' : ''}
               </div>
             `).join('')}
             <div style="font-size: 13px; color: var(--text-muted); margin-left: 10px;">
-              Destaque Ativo: <strong id="current-accent-label" style="color: var(--text-header);">${activeAccentName}</strong>
+              ${t('appearanceTab.activeAccentLabel')}: <strong id="current-accent-label" style="color: var(--text-header);">${escapeHtml(activeAccentName)}</strong>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">EXIBIÇÃO DE MENSAGENS</div>
+          <div class="settings-section-subtitle">${t('appearanceTab.messageDisplaySubtitle')}</div>
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Modo Confortável</div>
-                <div class="discord-toggle-desc">Visual moderno com avatares grandes e espaçamento agradável entre mensagens.</div>
+                <div class="discord-toggle-title">${t('appearanceTab.cozyModeTitle')}</div>
+                <div class="discord-toggle-desc">${t('appearanceTab.cozyModeDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Modo Compacto</div>
-                <div class="discord-toggle-desc">Acomoda mais mensagens na tela simultaneamente em formato condensado.</div>
+                <div class="discord-toggle-title">${t('appearanceTab.compactModeTitle')}</div>
+                <div class="discord-toggle-desc">${t('appearanceTab.compactModeDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" id="toggle-compact-mode" onchange="toggleCompactMode(this.checked)" /><span class="discord-slider"></span></label>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">ESCALA DE FONTE DO CHAT</div>
+          <div class="settings-section-subtitle">${t('appearanceTab.fontScaleSubtitle')}</div>
           <div class="settings-card" style="margin-bottom: 24px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <span style="font-size: 13px; color: var(--text-muted);">Tamanho do Texto</span>
+              <span style="font-size: 13px; color: var(--text-muted);">${t('appearanceTab.fontSizeLabel')}</span>
               <span id="font-scale-indicator" style="font-weight: 700; color: var(--text-header);">15px</span>
             </div>
             <input type="range" min="12" max="20" value="15" style="width: 100%; accent-color: var(--accent);" oninput="document.getElementById('font-scale-indicator').textContent = this.value + 'px'; document.documentElement.style.fontSize = (this.value / 16 * 100) + '%';" />
           </div>
 
-          <!-- BOTÃO SALVAR ALTERAÇÕES NA PARTE INFERIOR -->
-          <div style="padding: 18px 24px; background-color: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
+          <div style="padding: 18px 24px; background-color: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; margin-top: 20px; gap: 12px; flex-wrap: wrap;">
             <div>
-              <div style="font-size: 14px; font-weight: 700; color: var(--text-header);">Salvar Alterações de Aparência</div>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Persista sua escolha de temas e paleta de cores para sessões futuras.</div>
+              <div style="font-size: 14px; font-weight: 700; color: var(--text-header);">${t('appearanceTab.saveBoxTitle')}</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">${t('appearanceTab.saveBoxDesc')}</div>
             </div>
-            <button class="btn-primary" style="padding: 10px 26px; font-weight: 700; font-size: 14px; cursor: pointer;" onclick="promptSaveAppearanceSettings()">Salvar Alterações</button>
+            <button class="btn-primary" style="padding: 10px 26px; font-weight: 700; font-size: 14px; cursor: pointer;" onclick="promptSaveAppearanceSettings()">${t('common.save')}</button>
           </div>
         `;
       }
@@ -7982,32 +9133,32 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Reduzir Movimento</div>
-                <div class="discord-toggle-desc">Reduz a intensidade das animações e transições na interface.</div>
+                <div class="discord-toggle-title">${t('accessibilityTab.reduceMotionTitle')}</div>
+                <div class="discord-toggle-desc">${t('accessibilityTab.reduceMotionDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Reprodução Automática de GIFs</div>
-                <div class="discord-toggle-desc">Executar animações de GIFs sem precisar clicar neles.</div>
+                <div class="discord-toggle-title">${t('accessibilityTab.autoplayGifsTitle')}</div>
+                <div class="discord-toggle-desc">${t('accessibilityTab.autoplayGifsDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Reprodução Automática de Stickers</div>
-                <div class="discord-toggle-desc">Animar figurinhas enviadas no chat automaticamente.</div>
+                <div class="discord-toggle-title">${t('accessibilityTab.autoplayStickersTitle')}</div>
+                <div class="discord-toggle-desc">${t('accessibilityTab.autoplayStickersDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Leitor de Tela e Conversão de Texto em Fala (TTS)</div>
-                <div class="discord-toggle-desc">Permite sintetizar mensagens com o comando /tts.</div>
+                <div class="discord-toggle-title">${t('accessibilityTab.ttsTitle')}</div>
+                <div class="discord-toggle-desc">${t('accessibilityTab.ttsDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
@@ -8031,14 +9182,14 @@
           
           <div id="settings-bluetooth-banner" style="display: none; background: rgba(88,101,242,0.15); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-bottom: 16px;"></div>
 
-          <div class="settings-section-subtitle">DISPOSITIVOS DE ÁUDIO</div>
+          <div class="settings-section-subtitle">${t('audioModal.title')}</div>
           <div class="settings-card">
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">DISPOSITIVO DE ENTRADA (MICROFONE)</label>
+              <label class="form-label">${t('audioModal.inputDeviceLabel')}</label>
               <select class="form-input" id="settings-audio-input-select"></select>
               <div style="margin-top: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE ENTRADA (GANHO DO MICROFONE 0% - 200%)</label>
+                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">${t('voiceVideoTab.inputVolumeLabel')}</label>
                   <span id="settings-input-volume-val" style="font-size: 12px; font-weight: 700; color: ${currentInputVol > 100 ? 'var(--green)' : 'var(--accent)'};">${currentInputVol}%</span>
                 </div>
                 <input type="range" id="settings-input-volume" min="0" max="200" step="1" value="${currentInputVol}" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
@@ -8046,11 +9197,11 @@
             </div>
 
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label">DISPOSITIVO DE SAÍDA (FONES / ALTO-FALANTES / BLUETOOTH)</label>
+              <label class="form-label">${t('audioModal.outputDeviceLabel')}</label>
               <select class="form-input" id="settings-audio-output-select"></select>
               <div style="margin-top: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">VOLUME DE SAÍDA (AMPLIFICAÇÃO 0% - 200%)</label>
+                  <label style="font-size: 11px; color: var(--text-muted); font-weight: 600;">${t('voiceVideoTab.outputVolumeLabel')}</label>
                   <span id="settings-output-volume-val" style="font-size: 12px; font-weight: 700; color: ${currentOutputVol > 100 ? 'var(--green)' : 'var(--accent)'};">${currentOutputVol}%</span>
                 </div>
                 <input type="range" id="settings-output-volume" min="0" max="200" step="1" value="${currentOutputVol}" style="width: 100%; accent-color: var(--accent); margin-top: 4px;" />
@@ -8059,9 +9210,9 @@
 
             <div class="device-test-container" style="margin-top: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 12px; font-weight: 700; color: var(--text-header);">TESTE DE MICROFONE (COM KRISP & ISOLAMENTO DE VOZ)</span>
+                <span style="font-size: 12px; font-weight: 700; color: var(--text-header);">${t('voiceVideoTab.micTestHeader')}</span>
                 <button type="button" class="btn-secondary" id="settings-btn-test-mic" style="font-size: 12px; padding: 4px 10px;">
-                  Testar Mic
+                  ${t('voiceVideoTab.testMicBtn')}
                 </button>
               </div>
               <div class="mic-meter-bar" style="height: 10px;">
@@ -8071,35 +9222,35 @@
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
               <button type="button" class="btn-secondary" id="settings-btn-test-speaker" style="font-size: 12px; padding: 6px 14px;">
-                🔊 Testar Som de Saída
+                ${t('audioModal.testSpeakerBtn')}
               </button>
-              <span id="settings-speaker-status" style="font-size: 12px; color: var(--green); display: none;">Tocando som de teste...</span>
+              <span id="settings-speaker-status" style="font-size: 12px; color: var(--green); display: none;">${t('audioModal.playingSound')}</span>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">MODO DE ENTRADA</div>
+          <div class="settings-section-subtitle">${t('voiceVideoTab.inputModeSubtitle')}</div>
           <div class="settings-card">
-            <div style="display: flex; gap: 20px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
               <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                 <input type="radio" name="input-mode" checked />
-                <span style="font-size: 14px; font-weight: 600; color: var(--text-header);">Ativação por Voz</span>
+                <span style="font-size: 14px; font-weight: 600; color: var(--text-header);">${t('voiceVideoTab.voiceActivity')}</span>
               </label>
               <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                 <input type="radio" name="input-mode" />
-                <span style="font-size: 14px; font-weight: 600; color: var(--text-header);">Pressionar para Falar (PTT)</span>
+                <span style="font-size: 14px; font-weight: 600; color: var(--text-header);">${t('voiceVideoTab.pushToTalk')}</span>
               </label>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">PROCESSAMENTO DE VOZ AVANÇADO (HEXAGONAL AUDIO ENGINE)</div>
+          <div class="settings-section-subtitle">${t('voiceVideoTab.advancedProcessingSubtitle')}</div>
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
                 <div class="discord-toggle-title" style="display: flex; align-items: center; gap: 8px;">
-                  <span>🎙️ Isolamento de Voz (Voice Isolation)</span>
-                  <span class="settings-badge-nitro" style="background: var(--accent); font-size: 10px; padding: 2px 6px;">FLAG DISCORD</span>
+                  <span>${t('audioModal.voiceIsolationTitle')}</span>
+                  <span class="settings-badge-nitro" style="background: var(--accent); font-size: 10px; padding: 2px 6px;">FLAG</span>
                 </div>
-                <div class="discord-toggle-desc">Isola estritamente a banda de frequências vocais humanas (135Hz – 3900Hz) e corta completamente sons periféricos, respiração, teclado mecânico, cliques de mouse e ruído de ambiente.</div>
+                <div class="discord-toggle-desc">${t('voiceVideoTab.voiceIsoFullDesc')}</div>
               </div>
               <label class="discord-switch">
                 <input type="checkbox" id="settings-toggle-voice-isolation" ${isVoiceIsolation ? 'checked' : ''} />
@@ -8109,14 +9260,14 @@
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">🛡️ Supressão de Ruído Krisp (AI & DSP)</div>
-                <div class="discord-toggle-desc">Filtro espectral adaptativo que analisa formantes vocais em tempo real e cancela ruídos contínuos como ventiladores, ar-condicionado e chiado de microfone.</div>
+                <div class="discord-toggle-title">${t('audioModal.krispTitle')}</div>
+                <div class="discord-toggle-desc">${t('voiceVideoTab.krispFullDesc')}</div>
                 <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
-                  <span style="font-size: 12px; color: var(--text-muted);">Algoritmo:</span>
+                  <span style="font-size: 12px; color: var(--text-muted);">${t('voiceVideoTab.algorithmLabel')}:</span>
                   <select class="form-input" id="settings-krisp-mode" style="width: auto; padding: 4px 8px; font-size: 12px;">
                     <option value="krisp" ${currentMode === 'krisp' ? 'selected' : ''}>SyncCord Krisp AI (Spectral Gate)</option>
-                    <option value="dsp" ${currentMode === 'dsp' ? 'selected' : ''}>Filtro DSP Padrão (Hum & Rumble Cut)</option>
-                    <option value="off" ${currentMode === 'off' ? 'selected' : ''}>Desativado</option>
+                    <option value="dsp" ${currentMode === 'dsp' ? 'selected' : ''}>DSP Standard (Hum &amp; Rumble Cut)</option>
+                    <option value="off" ${currentMode === 'off' ? 'selected' : ''}>${t('voiceVideoTab.disabledOption')}</option>
                   </select>
                 </div>
               </div>
@@ -8128,17 +9279,17 @@
 
             <div style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; font-weight: 600; color: var(--text-header);">Sensibilidade do Noise Gate Krisp</span>
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-header);">${t('voiceVideoTab.noiseGateSensitivity')}</span>
                 <span id="settings-krisp-threshold-val" style="font-size: 12px; color: var(--accent); font-weight: 700;">${currentThreshold} dB</span>
               </div>
               <input type="range" id="settings-krisp-threshold" min="-60" max="-15" step="1" value="${currentThreshold}" style="width: 100%; accent-color: var(--accent); margin-top: 6px;" />
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Corta ruídos quando você não está falando. Valores mais altos (-32dB a -25dB) bloqueiam ruídos muito fortes ao redor.</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('voiceVideoTab.noiseGateDesc')}</div>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">🎧 Modo Anti-Abafamento (YouTube, Vídeos & Músicas)</div>
-                <div class="discord-toggle-desc">Impede que o Windows reduza o som em 80% ou abafe o áudio de vídeos do YouTube e músicas ao entrar em canais de voz. Mantém saída estúdio (48kHz estéreo).</div>
+                <div class="discord-toggle-title">🎧 ${t('voiceVideoTab.antiDuckingTitle')}</div>
+                <div class="discord-toggle-desc">${t('voiceVideoTab.antiDuckingDesc')}</div>
               </div>
               <label class="discord-switch">
                 <input type="checkbox" id="settings-toggle-anti-ducking" ${isAntiDucking ? 'checked' : ''} />
@@ -8148,8 +9299,8 @@
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Cancelamento de Eco (AEC)</div>
-                <div class="discord-toggle-desc">Impede recaptura por caixas de som abertas. <em>Dica: mantenha desativado se você usa fones de ouvido para preservar a máxima qualidade sonora!</em></div>
+                <div class="discord-toggle-title">${t('voiceVideoTab.echoCancelTitle')}</div>
+                <div class="discord-toggle-desc">${t('voiceVideoTab.echoCancelDesc')}</div>
               </div>
               <label class="discord-switch">
                 <input type="checkbox" id="settings-toggle-echo-cancel" ${isEchoCancel ? 'checked' : ''} />
@@ -8159,8 +9310,8 @@
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Controle Automático de Ganho (AGC)</div>
-                <div class="discord-toggle-desc">Equaliza e comprime suavemente picos de fala para manter seu volume estável.</div>
+                <div class="discord-toggle-title">${t('voiceVideoTab.agcTitle')}</div>
+                <div class="discord-toggle-desc">${t('voiceVideoTab.agcDesc')}</div>
               </div>
               <label class="discord-switch">
                 <input type="checkbox" id="settings-toggle-agc" ${isAgc ? 'checked' : ''} />
@@ -8174,30 +9325,40 @@
       case 'text-images':
         return `
           <div class="settings-pane-title">${t('settings.textImages')}</div>
+          <div class="settings-section-subtitle">${t('textImages.subtitle')}</div>
           
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Exibir Imagens e Mídias no Chat</div>
-                <div class="discord-toggle-desc">Carrega imagens e vídeos enviados diretamente na conversa.</div>
+                <div class="discord-toggle-title">${t('textImages.showImagesTitle')}</div>
+                <div class="discord-toggle-desc">${t('textImages.showImagesDesc')}</div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="toggle-ti-show-images-media" ${textImagesSettings.showImagesMedia ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Converter Emoticons em Emojis</div>
-                <div class="discord-toggle-desc">Converte caracteres como :) automaticamente para 🙂.</div>
+                <div class="discord-toggle-title">${t('textImages.convertEmoticonsTitle')}</div>
+                <div class="discord-toggle-desc">${t('textImages.convertEmoticonsDesc')}</div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="toggle-ti-convert-emoticons" ${textImagesSettings.convertEmoticons ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Prévia de Links da Web</div>
-                <div class="discord-toggle-desc">Exibir cartões ricos com título, descrição e thumbnail ao colar links.</div>
+                <div class="discord-toggle-title">${t('textImages.linkPreviewsTitle')}</div>
+                <div class="discord-toggle-desc">${t('textImages.linkPreviewsDesc')}</div>
               </div>
-              <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
+              <label class="discord-switch">
+                <input type="checkbox" id="toggle-ti-show-link-previews" ${textImagesSettings.showLinkPreviews ? 'checked' : ''} />
+                <span class="discord-slider"></span>
+              </label>
             </div>
           </div>
         `;
@@ -8209,32 +9370,32 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Notificações na Área de Trabalho</div>
-                <div class="discord-toggle-desc">Exibir notificações nativas do Windows quando novas mensagens chegarem.</div>
+                <div class="discord-toggle-title">${t('notificationsTab.desktopNotifTitle')}</div>
+                <div class="discord-toggle-desc">${t('notificationsTab.desktopNotifDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Sons de Mensagem</div>
-                <div class="discord-toggle-desc">Tocar o som oficial do SyncCord quando uma mensagem for recebida.</div>
+                <div class="discord-toggle-title">${t('notificationsTab.messageSoundsTitle')}</div>
+                <div class="discord-toggle-desc">${t('notificationsTab.messageSoundsDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Sons de Conexão em Voz</div>
-                <div class="discord-toggle-desc">Tocar alertas sonoros quando membros entram ou saem da chamada.</div>
+                <div class="discord-toggle-title">${t('notificationsTab.voiceSoundsTitle')}</div>
+                <div class="discord-toggle-desc">${t('notificationsTab.voiceSoundsDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Notificações Não Lidas na Barra de Tarefas</div>
-                <div class="discord-toggle-desc">Pede atenção piscando o ícone do aplicativo quando houver menções.</div>
+                <div class="discord-toggle-title">${t('notificationsTab.taskbarBadgeTitle')}</div>
+                <div class="discord-toggle-desc">${t('notificationsTab.taskbarBadgeDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
@@ -8244,31 +9405,31 @@
       case 'keybinds':
         return `
           <div class="settings-pane-title">${t('settings.keybinds')}</div>
-          <div class="settings-section-subtitle">ATALHOS GLOBAIS DO SYNCCORD</div>
+          <div class="settings-section-subtitle">${t('keybindsTab.subtitle')}</div>
           
           <div class="settings-card">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <span style="font-weight: 600; color: var(--text-header);">Ativar / Desativar Mudo do Microfone</span>
+              <span style="font-weight: 600; color: var(--text-header);">${t('keybindsTab.toggleMute')}</span>
               <kbd style="background: #2b2d31; border: 1px solid #1e1f22; padding: 4px 10px; border-radius: 4px; font-weight: 700; color: white;">Ctrl + Shift + M</kbd>
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <span style="font-weight: 600; color: var(--text-header);">Ativar / Desativar Áudio (Enfraquecer)</span>
+              <span style="font-weight: 600; color: var(--text-header);">${t('keybindsTab.toggleDeafen')}</span>
               <kbd style="background: #2b2d31; border: 1px solid #1e1f22; padding: 4px 10px; border-radius: 4px; font-weight: 700; color: white;">Ctrl + Shift + D</kbd>
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <span style="font-weight: 600; color: var(--text-header);">Pressionar para Falar (Push-to-Talk)</span>
-              <kbd style="background: #2b2d31; border: 1px solid #1e1f22; padding: 4px 10px; border-radius: 4px; font-weight: 700; color: white;">Shift Direito</kbd>
+              <span style="font-weight: 600; color: var(--text-header);">${t('keybindsTab.pushToTalk')}</span>
+              <kbd style="background: #2b2d31; border: 1px solid #1e1f22; padding: 4px 10px; border-radius: 4px; font-weight: 700; color: white;">Right Shift</kbd>
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0;">
-              <span style="font-weight: 600; color: var(--text-header);">Abrir / Fechar Configurações</span>
+              <span style="font-weight: 600; color: var(--text-header);">${t('keybindsTab.toggleSettings')}</span>
               <kbd style="background: #2b2d31; border: 1px solid #1e1f22; padding: 4px 10px; border-radius: 4px; font-weight: 700; color: white;">ESC / Ctrl + ,</kbd>
             </div>
           </div>
 
-          <button class="btn-primary" onclick="window.alert('Atalho customizado adicionado com sucesso!')">Adicionar Atalho</button>
+          <button class="btn-primary" onclick="showToastNotification('${escapeHtml(t('keybindsTab.addedToast'))}')">${t('keybindsTab.addKeybindBtn')}</button>
         `;
 
       case 'language': {
@@ -8301,12 +9462,11 @@
             </div>
           </div>
 
-          <!-- Bottom Save Actions Bar -->
-          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); padding: 14px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); padding: 14px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 10px; gap: 12px; flex-wrap: wrap;">
             <div style="font-size: 13px; color: var(--text-muted);">
               ${selectedKey !== currentLocale
-                ? `<span>${t('language.title')}: <strong style="color: #fff;">${SUPPORTED_LOCALES[selectedKey].name}</strong> (pendente)</span>`
-                : `<span>${t('language.title')} ativo: <strong style="color: var(--green);">${SUPPORTED_LOCALES[currentLocale].name}</strong></span>`
+                ? `<span>${t('language.title')}: <strong style="color: #fff;">${SUPPORTED_LOCALES[selectedKey].name}</strong> (${t('language.pendingTag')})</span>`
+                : `<span>${t('language.activeLabel')}: <strong style="color: var(--green);">${SUPPORTED_LOCALES[currentLocale].name}</strong></span>`
               }
             </div>
             <div style="display: flex; gap: 12px; align-items: center;">
@@ -8326,29 +9486,29 @@
       case 'windows-settings':
         return `
           <div class="settings-pane-title">${t('settings.windowsSettings')}</div>
-          <div class="settings-section-subtitle">COMPORTAMENTO DO APLICATIVO DO SISTEMA OPERACIONAL</div>
+          <div class="settings-section-subtitle">${t('windowsTab.subtitle')}</div>
           
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Abrir SyncCord ao Inicializar</div>
-                <div class="discord-toggle-desc">Inicia o aplicativo automaticamente assim que você faz login no Windows.</div>
+                <div class="discord-toggle-title">${t('windowsTab.openOnStartupTitle')}</div>
+                <div class="discord-toggle-desc">${t('windowsTab.openOnStartupDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Iniciar Minimizado</div>
-                <div class="discord-toggle-desc">Inicia silenciosamente na bandeja do sistema sem abrir a janela principal.</div>
+                <div class="discord-toggle-title">${t('windowsTab.startMinimizedTitle')}</div>
+                <div class="discord-toggle-desc">${t('windowsTab.startMinimizedDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Minimizar para a Bandeja do Sistema</div>
-                <div class="discord-toggle-desc">Ao clicar no botão fechar (X), mantém o SyncCord executando em segundo plano.</div>
+                <div class="discord-toggle-title">${t('windowsTab.minimizeToTrayTitle')}</div>
+                <div class="discord-toggle-desc">${t('windowsTab.minimizeToTrayDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
@@ -8362,24 +9522,24 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Habilitar Modo Streamer Automaticamente</div>
-                <div class="discord-toggle-desc">Detecta automaticamente softwares de streaming como OBS Studio e Streamlabs.</div>
+                <div class="discord-toggle-title">${t('streamerTab.autoEnableTitle')}</div>
+                <div class="discord-toggle-desc">${t('streamerTab.autoEnableDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Ocultar Dados Pessoais</div>
-                <div class="discord-toggle-desc">Protege e-mail, conexões, notas e tags de serem exibidos na live.</div>
+                <div class="discord-toggle-title">${t('streamerTab.hidePersonalTitle')}</div>
+                <div class="discord-toggle-desc">${t('streamerTab.hidePersonalDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Ocultar Links de Convite de Servidores</div>
-                <div class="discord-toggle-desc">Evita invasões de pessoas desconhecidas nos servidores em que você está.</div>
+                <div class="discord-toggle-title">${t('streamerTab.hideInvitesTitle')}</div>
+                <div class="discord-toggle-desc">${t('streamerTab.hideInvitesDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
@@ -8393,24 +9553,24 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Modo de Desenvolvedor</div>
-                <div class="discord-toggle-desc">Expõe IDs de usuários, canais e mensagens no menu de contexto (clique com botão direito).</div>
+                <div class="discord-toggle-title">${t('advancedTab.devModeTitle')}</div>
+                <div class="discord-toggle-desc">${t('advancedTab.devModeDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" id="toggle-developer-mode" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Aceleração de Hardware por GPU</div>
-                <div class="discord-toggle-desc">Utiliza a placa de vídeo do computador para acelerar a renderização do SyncCord.</div>
+                <div class="discord-toggle-title">${t('advancedTab.gpuAccelTitle')}</div>
+                <div class="discord-toggle-desc">${t('advancedTab.gpuAccelDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Diagnósticos de Rede WebRTC</div>
-                <div class="discord-toggle-desc">Gera logs detalhados de pacotes, jitter e ping em chamadas de voz.</div>
+                <div class="discord-toggle-title">${t('advancedTab.webrtcDiagTitle')}</div>
+                <div class="discord-toggle-desc">${t('advancedTab.webrtcDiagDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
@@ -8425,32 +9585,32 @@
           <div class="settings-card">
             <div class="discord-toggle-row">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Exibir Atividade em Execução no Status</div>
-                <div class="discord-toggle-desc">Atualiza seu status automaticamente mostrando o jogo, código ou música que estiver aberta.</div>
+                <div class="discord-toggle-title">${t('activityTab.showActivityTitle')}</div>
+                <div class="discord-toggle-desc">${t('activityTab.showActivityDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
 
             <div class="discord-toggle-row" style="border: none;">
               <div class="discord-toggle-info">
-                <div class="discord-toggle-title">Compartilhar Atividade na Chamada</div>
-                <div class="discord-toggle-desc">Permite que outros participantes da call vejam o que você está jogando ou assistindo.</div>
+                <div class="discord-toggle-title">${t('activityTab.shareInCallTitle')}</div>
+                <div class="discord-toggle-desc">${t('activityTab.shareInCallDesc')}</div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
             </div>
           </div>
 
-          <div class="settings-section-subtitle">JOGOS DETECTADOS NESTA MÁQUINA</div>
+          <div class="settings-section-subtitle">${t('activityTab.detectedGamesSubtitle')}</div>
           <div class="settings-card">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="font-size: 20px;">🎮</span>
                 <div>
                   <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">SyncCord Desktop Client</div>
-                  <div style="font-size: 11px; color: var(--green);">Em execução agora</div>
+                  <div style="font-size: 11px; color: var(--green);">${t('activityTab.runningNow')}</div>
                 </div>
               </div>
-              <span class="settings-badge-nitro" style="background: var(--green);">OVERLAY ATIVO</span>
+              <span class="settings-badge-nitro" style="background: var(--green);">${t('activityTab.overlayActive')}</span>
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0;">
@@ -8458,7 +9618,7 @@
                 <span style="font-size: 20px;">💻</span>
                 <div>
                   <div style="font-size: 14px; font-weight: 600; color: var(--text-header);">Visual Studio Code</div>
-                  <div style="font-size: 11px; color: var(--text-muted);">Detectado no Windows</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${t('activityTab.detectedOnOs')}</div>
                 </div>
               </div>
               <label class="discord-switch"><input type="checkbox" checked /><span class="discord-slider"></span></label>
@@ -8467,7 +9627,7 @@
         `;
 
       default:
-        return `<div class="settings-pane-title">Configurações</div>`;
+        return `<div class="settings-pane-title">${t('settings.userSettings')}</div>`;
     }
   }
 
@@ -8816,20 +9976,20 @@
 
   function promptSaveAppearanceSettings() {
     const themeNames = {
-      dark: 'Escuro',
-      light: 'Claro',
-      midnight: 'Meia-noite (AMOLED)',
-      navy: 'Azul Marinho',
-      ruby: 'Rubi',
-      forest: 'Floresta',
+      dark: t('appearanceTab.themeDark'),
+      light: t('appearanceTab.themeLight'),
+      midnight: t('appearanceTab.themeMidnightDesc'),
+      navy: t('appearanceTab.themeNavy'),
+      ruby: t('appearanceTab.themeRuby'),
+      forest: t('appearanceTab.themeForest'),
     };
     const tName = themeNames[pendingAppearanceTheme] || pendingAppearanceTheme;
 
     showConfirmDialog({
-      title: 'Tem certeza disso?',
-      message: `Deseja salvar e aplicar o tema <strong>${escapeHtml(tName)}</strong> com a cor de destaque selecionada?`,
-      confirmText: 'Salvar Alterações',
-      cancelText: 'Cancelar',
+      title: t('common.areYouSure'),
+      message: t('appearanceTab.confirmSaveMsg', { theme: escapeHtml(tName) }),
+      confirmText: t('common.save'),
+      cancelText: t('common.cancel'),
       onConfirm: () => {
         applyAppearanceSettings(pendingAppearanceTheme, pendingAppearanceAccent);
         localStorage.setItem(
@@ -8840,7 +10000,7 @@
           }),
         );
         localStorage.setItem('discord_theme', pendingAppearanceTheme);
-        showToastNotification('Configurações de aparência salvas e persistidas com sucesso!');
+        showToastNotification(t('appearanceTab.savedToast'));
       },
     });
   }
@@ -8868,7 +10028,8 @@
         id === 'reset-password-modal' ||
         id === 'confirm-email-modal' ||
         id === 'edit-channel-modal' ||
-        id === 'guild-notifications-modal'
+        id === 'guild-notifications-modal' ||
+        id === 'connection-sync-modal'
       ) {
         el.style.display = 'none';
       }
@@ -8982,6 +10143,8 @@
         localStorage.setItem('synccord_user', JSON.stringify(currentUser));
         showAuthModal(false);
         updateUserPanel();
+        loadUserConnections();
+        loadAuthorizedApps();
         initWebSocket();
         await loadGuilds();
         showToastNotification('E-mail confirmado e senha aplicada com sucesso!');

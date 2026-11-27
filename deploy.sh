@@ -48,7 +48,7 @@ FINAL_SMTP_PORT="${SMTP_PORT:-465}"
 FINAL_SMTP_SECURE="${SMTP_SECURE:-true}"
 FINAL_SMTP_USER="${SMTP_USER:-correa.marcospaulo@gmail.com}"
 FINAL_SMTP_PASS="${SMTP_PASS:-$EXISTING_SMTP_PASS}"
-FINAL_SMTP_FROM="${SMTP_FROM:-\"SyncCord\" <correa.marcospaulo@gmail.com>}"
+FINAL_SMTP_FROM="${SMTP_FROM:-\"SyncCord <correa.marcospaulo@gmail.com>\"}"
 
 cat << EOF > .env
 PORT=3000
